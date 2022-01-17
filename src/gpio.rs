@@ -64,16 +64,23 @@ impl<MODE> Pin<MODE> {
     }
 
     pub fn into_floating_input(self) -> Pin<Input<Floating>>{
-        unsafe{
-            // Turn output off
-            self.block().out_en_clr.write(|w| w.bits(0x01 << self.pin()));
-            // Clear pulls
-            self.block().pad_cfg1.write(|w| w.bits(0x01 << self.pin()));
-        }
+        // Turn output off
+        unsafe{ self.block().out_en_clr.write(|w| w.bits(0x01 << self.pin())); }
+        // Clear pulls for pin, not clear if this is necessary to use modify, #TODO test
+        self.block().pad_cfg1.modify(|r, w| r.bits() & !(0x01 << self.pin()));
         Pin {
             pin: self.pin,
             _mode: PhantomData,
         }
+    }
+
+    pub fn into_pullup_input(self) -> Pin<Input<PullUp>> {
+        self.into_floating_input();
+        // Is the modify necessary? PU is '1'
+        self.block().ps.modify(|r, w| r.bits() | (0x01 << self.pin()));
+        // Enables the pullup
+        self.block().pad_cfg1.modify(|r, w| r.bits() | (0x01 << self.pin()));
+        
     }
 }
 
