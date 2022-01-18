@@ -50,8 +50,9 @@ use crate::pac::{gpio0, GPIO0 as P0};
 // `<MODE>` Must precede the type to remain generic.
 impl<MODE> Pin<MODE> {
     // New should be made private once the macro rules are used.
-    pub fn new(pin:u8) -> Self {
-        Self {pin, _mode: PhantomData}
+    pub fn new(pin:u8) -> Pin<Input<Floating>> {
+        let pin = Pin::<Input<Disconnected>>{pin, _mode: PhantomData};
+        pin.into_floating_input()
     }
 
     #[inline]
