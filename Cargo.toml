@@ -7,8 +7,13 @@ edition = "2021"
 
 [dependencies]
 max32660-pac = {version = "0.1.0", features = ["rt"]}
-void = "1.0.2"
+void = {version = "1.0.2", default-features = false}
 
 [dependencies.embedded-hal]
 features = ["unproven"]
 version = "0.2.6"
+
+[features]
+doc = []
+rt = ["max32660-pac/rt"]
+default = ["rt"]
