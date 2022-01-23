@@ -1,4 +1,14 @@
-use core::marker::PhantomData;
+//! Module to configure the GPIO pins as I/O and Alternate Functions (AF).
+//! 
+//! ===================================
+//! | Package | Number of GPIO | Pins |
+//! ===================================
+//! | 16 WLP  | GPIO0[9:0]     |  10  |
+//! | 20 TQFN | GPIO0[13:0]    |  14  |
+//! | 24 TQFN | GPIO0[13:0]    |  14  |
+//! ===================================
+
+use core::{marker::PhantomData};
 use void::Void;
 use embedded_hal::digital::v2::{InputPin, OutputPin, StatefulOutputPin};
 
@@ -32,6 +42,29 @@ pub struct OpenDrain;
 pub enum Level {
     Low,
     High,
+}
+
+pub enum DriveStrength{
+    OneMilliamps,
+    TwoMilliamps,
+    FourMilliamps,
+    SixMilliamps,
+}
+
+struct DriveStrengthSetting {
+    ds1: bool,
+    ds: bool,
+}
+
+impl DriveStrength {
+    fn get_setting(self) -> DriveStrengthSetting {
+        match self {
+            DriveStrength::OneMilliamps => DriveStrengthSetting{ds1:false, ds:false},
+            DriveStrength::TwoMilliamps => DriveStrengthSetting{ds1:false, ds:true},
+            DriveStrength::FourMilliamps => DriveStrengthSetting{ds1:true, ds:false},
+            DriveStrength::SixMilliamps => DriveStrengthSetting{ds1:true, ds:true},
+        }
+    }
 }
 
 // ===============================================================
@@ -160,8 +193,18 @@ impl <MODE> StatefulOutputPin for Pin <Output<MODE>> {
 
     /// Is the output pin set as low?
     fn is_set_low(&self) -> Result<bool, Self::Error> {
-        // NOTE(unsafe) atomic read with no side effects - TODO(AJM) verify?
-        // TODO - I wish I could do something like `.pins$i()`...
         Ok(self.block().out.read().bits() & (1 << self.pin()) == 0)
+    }
+}
+
+impl <MODE> Pin <Output<MODE>> {
+    pub fn set_drive_strength(&self, drive_strength: DriveStrength) -> () {
+        let ds_settings = drive_strength.get_setting();
+        let ds_val = ds_settings.ds as u32;
+        let ds1_val = ds_settings.ds1 as u32;
+        unsafe{
+            self.block().ds.modify(|r, w| w.bits(r.bits() | (ds_val << self.pin())));
+            self.block().ds1.modify(|r, w| w.bits(r.bits() | (ds1_val << self.pin())));
+        } 
     }
 }
