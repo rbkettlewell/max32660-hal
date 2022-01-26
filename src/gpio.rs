@@ -1,12 +1,10 @@
 //! Module to configure the GPIO pins as I/O and Alternate Functions (AF).
 //! 
-//! ===================================
-//! | Package | Number of GPIO | Pins |
-//! ===================================
-//! | 16 WLP  | GPIO0[9:0]     |  10  |
-//! | 20 TQFN | GPIO0[13:0]    |  14  |
-//! | 24 TQFN | GPIO0[13:0]    |  14  |
-//! ===================================
+/// | Package | Number of GPIO | Pins |
+/// |---------------------------------|
+/// | 16 WLP  | GPIO0[9:0]     |  10  |
+/// | 20 TQFN | GPIO0[13:0]    |  14  |
+/// | 24 TQFN | GPIO0[13:0]    |  14  |
 
 use core::{marker::PhantomData};
 use void::Void;
