@@ -1,11 +1,10 @@
-//! Delays. 
-// #TODO simplify casts with macro and #FIXME HFCLK frequency assumption may be incorrect?
+//! Delays.
+// #FIXME HFCLK frequency assumption may be incorrect?
 use cortex_m::peripheral::syst::SystClkSource;
 use cortex_m::peripheral::SYST;
 use embedded_hal::blocking::delay::{DelayMs, DelayUs};
 
 use crate::clocks::HFCLK_FREQ;
-
 
 /// System timer (SysTick) as a delay provider.
 pub struct Delay {
@@ -28,19 +27,9 @@ impl Delay {
 
 impl DelayMs<u32> for Delay {
     fn delay_ms(&mut self, ms: u32) {
-        self.delay_us(ms * 1_000);
-    }
-}
-
-impl DelayMs<u16> for Delay {
-    fn delay_ms(&mut self, ms: u16) {
-        self.delay_ms(ms as u32);
-    }
-}
-
-impl DelayMs<u8> for Delay {
-    fn delay_ms(&mut self, ms: u8) {
-        self.delay_ms(ms as u32);
+        for _ in 0..ms {
+            self.delay_us(1_000u32);
+        }
     }
 }
 
@@ -72,14 +61,17 @@ impl DelayUs<u32> for Delay {
     }
 }
 
-impl DelayUs<u16> for Delay {
-    fn delay_us(&mut self, us: u16) {
-        self.delay_us(us as u32)
-    }
+macro_rules! delay_xs {
+    ($DXS: ident, $dxs: ident, $xs: ident, $T: ty) => {
+        impl $DXS<$T> for Delay {
+            fn $dxs(&mut self, $xs: $T) {
+                self.$dxs($xs as u32);
+            }
+        }
+    };
 }
 
-impl DelayUs<u8> for Delay {
-    fn delay_us(&mut self, us: u8) {
-        self.delay_us(us as u32)
-    }
-}
+delay_xs!(DelayMs, delay_ms, ms, u16);
+delay_xs!(DelayMs, delay_ms, ms, u8);
+delay_xs!(DelayUs, delay_us, us, u16);
+delay_xs!(DelayUs, delay_us, us, u8);
