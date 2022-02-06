@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-max32660-pac = {version = "0.1.0", features = ["rt"]}
+max32660-pac = {version = "0.1.0", features = ["rt"], path="../max32660-pac"}
 void = {version = "1.0.2", default-features = false}
 cortex-m = "0.7.4"
 
