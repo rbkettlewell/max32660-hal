@@ -14,6 +14,25 @@ use crate::pac::{gpio0 as gpio, GPIO0 as P0};
 /// Disconnected pin in input mode (type state, reset value).
 pub struct Disconnected;
 
+/// Alternate Function Gpio mode (type state)
+pub struct Gpio;
+
+/// Alternate Function 1 (type state)
+pub struct AF1;
+
+/// Alternate Function 2
+pub struct AF2;
+
+/// Alternate Function 3
+pub struct AF3;
+
+
+pub trait AltFn{}
+
+impl AltFn for AF1{}
+impl AltFn for AF2{}
+impl AltFn for AF3{}
+
 /// Input mode (type state)
 pub struct Input<MODE>{
     _mode: PhantomData<MODE>,
@@ -72,18 +91,20 @@ impl DriveStrength {
 // across all of the possible pins
 // ===============================================================
 /// Generic $PX pin
-pub struct Pin<MODE> {
+pub struct Pin<AF, MODE> {
     pin: u8,
-    _mode: PhantomData<MODE>,
+    _af: PhantomData<AF>,
+    _io: PhantomData<MODE>,
 }
 
 // `<MODE>` Must precede the type to remain generic.
-impl<MODE> Pin<MODE> {
+impl<AF, MODE> Pin<AF, MODE> {
     // New should be made private once the macro rules are used.
     fn new(pin:u8) -> Self {
         Self {
-            pin, 
-            _mode: PhantomData,
+            pin,
+            _af: PhantomData, 
+            _io: PhantomData,
         }
     }
 
@@ -97,7 +118,7 @@ impl<MODE> Pin<MODE> {
         ptr
     }
 
-    pub fn into_floating_input(self) -> Pin<Input<Floating>>{
+    pub fn into_floating_input(self) -> Pin<AF, Input<Floating>> {
         
         unsafe{ 
             // Turn output off
@@ -108,11 +129,12 @@ impl<MODE> Pin<MODE> {
         
         Pin {
             pin: self.pin,
-            _mode: PhantomData,
+            _af: PhantomData,
+            _io: PhantomData,
         }
     }
 
-    pub fn into_pullup_input(self) -> Pin<Input<PullUp>> {
+    pub fn into_pullup_input(self) -> Pin<AF, Input<PullUp>> { // TODO Figure out how to use traits better
         let pin = self.into_floating_input();
         unsafe {
             // Is the modify necessary? PU is '1'
@@ -122,10 +144,11 @@ impl<MODE> Pin<MODE> {
         }
         Pin {
             pin: pin.pin,
-            _mode: PhantomData,
+            _af: PhantomData,
+            _io: PhantomData,
         }
     }
-    pub fn into_pulldown_input(self) -> Pin<Input<PullDown>> {
+    pub fn into_pulldown_input(self) -> Pin<AF, Input<PullDown>> {
         let pin = self.into_floating_input();
         unsafe {
             // Is the modify necessary? PU is '0'
@@ -135,14 +158,16 @@ impl<MODE> Pin<MODE> {
         }
         Pin {
             pin: pin.pin,
-            _mode: PhantomData,
+            _af: PhantomData,
+            _io: PhantomData,
         }
     }
 
-    pub fn into_push_pull_output(self, initial_output: Level) -> Pin<Output<PushPull>> {
+    pub fn into_push_pull_output(self, initial_output: Level) -> Pin<AF, Output<PushPull>> {
         let mut pin = Pin {
             pin: self.pin,
-            _mode: PhantomData,
+            _af: PhantomData,
+            _io: PhantomData,
         };
 
         unsafe { 
@@ -157,7 +182,13 @@ impl<MODE> Pin<MODE> {
     }
 }
 
-impl <MODE> InputPin for Pin <Input<MODE>> {
+impl <MODE> Pin<Gpio, MODE> {
+    fn into_af(&self) -> Pin<AF3, MODE> {
+        unimplemented!()
+    }
+}
+
+impl <AF, MODE> InputPin for Pin <AF,Input<MODE>> {
     type Error = Void;
 
     fn is_high(&self) -> Result<bool, Self::Error> {
@@ -168,7 +199,7 @@ impl <MODE> InputPin for Pin <Input<MODE>> {
     }
 }
 
-impl <MODE> OutputPin for Pin <Output<MODE>> {
+impl <AF, MODE> OutputPin for Pin <AF, Output<MODE>> {
     type Error = Void;
     fn set_low(&mut self) -> Result<(), Self::Error> {
         unsafe {
@@ -184,7 +215,7 @@ impl <MODE> OutputPin for Pin <Output<MODE>> {
     }
 }
 
-impl <MODE> StatefulOutputPin for Pin <Output<MODE>> {
+impl <AF, MODE> StatefulOutputPin for Pin<AF, Output<MODE>> {
     /// Is the output pin set as high?
     fn is_set_high(&self) -> Result<bool, Self::Error> {
         self.is_set_low().map(|v| !v)
@@ -196,7 +227,7 @@ impl <MODE> StatefulOutputPin for Pin <Output<MODE>> {
     }
 }
 
-impl <MODE> Pin <Output<MODE>> {
+impl <AF, MODE> Pin<AF, Output<MODE>> {
     pub fn set_drive_strength(&self, drive_strength: DriveStrength) -> () {
         let ds_settings = drive_strength.get_setting();
         let ds_val = ds_settings.ds as u32;
@@ -211,7 +242,7 @@ impl <MODE> Pin <Output<MODE>> {
 macro_rules! gpio {
     (
         $PX: ident, $px: ident, [
-            $($PXi: ident: ($pxi: ident, $i: expr, $MODE: ty),)+
+            $($PXi: ident: ($pxi: ident, $i: expr, $AF: ty, $IO: ty),)+
         ]
     ) => {
         // GPIO
@@ -230,7 +261,7 @@ macro_rules! gpio {
                 PullDown,
                 PullUp,
                 PushPull,
-
+                Gpio,
                 PhantomData,
                 $PX
             };
@@ -243,7 +274,7 @@ macro_rules! gpio {
             pub struct Parts {
                 $(
                     /// Pin
-                    pub $pxi: $PXi<$MODE>,
+                    pub $pxi: $PXi<$AF, $IO>,
                 )+
             }
 
@@ -252,7 +283,8 @@ macro_rules! gpio {
                     Self {
                         $(
                             $pxi: $PXi {
-                                _mode: PhantomData,
+                                _af: PhantomData,
+                                _io: PhantomData,
                             },
                         )+
                     }
@@ -263,11 +295,12 @@ macro_rules! gpio {
             // defined interface
             // ===============================================================
             $(
-                pub struct $PXi<MODE> {
-                    _mode: PhantomData<MODE>,
+                pub struct $PXi<AF, IO> {
+                    _af: PhantomData <AF>,
+                    _io: PhantomData <IO>,
                 }
 
-                impl<MODE> $PXi<MODE> {
+                impl<AF, IO> $PXi<AF, IO> {
 
                     fn block(&self) -> &gpio::RegisterBlock{
                         let ptr = unsafe { &*$PX::ptr() };
@@ -275,7 +308,7 @@ macro_rules! gpio {
                     }
 
                     /// Convert the pin to be a floating input
-                    pub fn into_floating_input(self) -> $PXi<Input<Floating>> {
+                    pub fn into_floating_input(self) -> $PXi <AF, Input<Floating>> {
                         unsafe { 
                             // Turn output off
                             self.block().out_en_clr.write(|w| w.bits(0x01 << $i)); 
@@ -284,11 +317,12 @@ macro_rules! gpio {
                         };
 
                         $PXi {
-                            _mode: PhantomData,
+                            _af: PhantomData,
+                            _io: PhantomData,
                         }
                     }
 
-                    pub fn into_pullup_input(self) -> $PXi<Input<PullUp>> {
+                    pub fn into_pullup_input(self) -> $PXi <AF, Input<PullUp>> {
                         let pin = self.into_floating_input();
                         unsafe {
                             // Is the modify necessary? PU is '1'
@@ -298,11 +332,12 @@ macro_rules! gpio {
                         }
 
                         $PXi {
-                            _mode: PhantomData,
+                            _af: PhantomData,
+                            _io: PhantomData,
                         }
                     }
 
-                    pub fn into_pulldown_input(self) -> $PXi<Input<PullDown>> {
+                    pub fn into_pulldown_input(self) -> $PXi<AF, Input<PullDown>> {
                         let pin = self.into_floating_input();
                         unsafe {
                             // Is the modify necessary? PU is '0'
@@ -312,16 +347,18 @@ macro_rules! gpio {
                         }
 
                         $PXi {
-                            _mode: PhantomData,
+                            _af: PhantomData,
+                            _io: PhantomData,
                         }
                     }
 
                     /// Convert the pin to bepin a push-pull output with normal drive
                     pub fn into_push_pull_output(self, initial_output: Level)
-                        -> $PXi<Output<PushPull>>
+                        -> $PXi<AF, Output<PushPull>>
                     {
                         let mut pin = $PXi {
-                            _mode: PhantomData,
+                            _af: PhantomData,
+                            _io: PhantomData,
                         };
 
                         match initial_output {
@@ -339,20 +376,20 @@ macro_rules! gpio {
                     /// Disconnects the pin.
                     /// 
                     /// Determine how to actually disconnect/turn off pins. #FIXME
-                    pub fn into_disconnected(self) -> $PXi<Disconnected> {
+                    pub fn into_disconnected(self) -> $PXi<AF, Disconnected> {
                         self.into_floating_input();
-                        let pin = $PXi::<Disconnected>{_mode: PhantomData};
+                        let pin = $PXi::<AF,Disconnected>{_af: PhantomData,_io: PhantomData,};
 
                         pin
                     }
 
                     /// Degrade to a generic pin struct, which can be used with peripherals
-                    pub fn degrade(self) -> Pin<MODE> {
+                    pub fn degrade(self) -> Pin<AF, IO> {
                         Pin::new($i)
                     }
                 }
 
-                impl<MODE> InputPin for $PXi<Input<MODE>> {
+                impl<AF, IO> InputPin for $PXi<AF, Input<IO>> {
                     type Error = Void;
 
                     fn is_high(&self) -> Result<bool, Self::Error> {
@@ -364,13 +401,13 @@ macro_rules! gpio {
                     }
                 }
 
-                impl<MODE> From<$PXi<MODE>> for Pin<MODE> {
-                    fn from(value: $PXi<MODE>) -> Self {
+                impl<AF, IO> From<$PXi<AF, IO>> for Pin<AF, IO> {
+                    fn from(value: $PXi<AF, IO>) -> Self {
                         value.degrade()
                     }
                 }
 
-                impl<MODE> OutputPin for $PXi<Output<MODE>> {
+                impl<AF, IO> OutputPin for $PXi<AF, Output<IO>> {
                     type Error = Void;
 
                     /// Set the output as high
@@ -392,7 +429,7 @@ macro_rules! gpio {
                     }
                 }
 
-                impl <MODE> $PXi <Output<MODE>> {
+                impl <AF, IO> $PXi <AF, Output<IO>> {
                     pub fn set_drive_strength(&self, drive_strength: DriveStrength) -> () {
                         let ds_settings = drive_strength.get_setting();
                         let ds_val = ds_settings.ds as u32;
@@ -404,7 +441,7 @@ macro_rules! gpio {
                     }
                 }
 
-                impl<MODE> StatefulOutputPin for $PXi<Output<MODE>> {
+                impl<AF, IO> StatefulOutputPin for $PXi<AF, Output<IO>> {
                     /// Is the output pin set as high?
                     fn is_set_high(&self) -> Result<bool, Self::Error> {
                         self.is_set_low().map(|v| !v)
@@ -425,18 +462,18 @@ macro_rules! gpio {
 
 // #FIXME should generate the correct number of pins based on which package is being used.
 gpio!(P0, p0, [
-    P0_00: (p0_00,  0, Disconnected),
-    P0_01: (p0_01,  1, Disconnected),
-    P0_02: (p0_02,  2, Disconnected),
-    P0_03: (p0_03,  3, Disconnected),
-    P0_04: (p0_04,  4, Disconnected),
-    P0_05: (p0_05,  5, Disconnected),
-    P0_06: (p0_06,  6, Disconnected),
-    P0_07: (p0_07,  7, Disconnected),
-    P0_08: (p0_08,  8, Disconnected),
-    P0_09: (p0_09,  9, Disconnected),
-    P0_10: (p0_10, 10, Disconnected),
-    P0_11: (p0_11, 11, Disconnected),
-    P0_12: (p0_12, 12, Disconnected),
-    P0_13: (p0_13, 13, Disconnected),
+    P0_00: (p0_00,  0, Gpio, Disconnected),
+    P0_01: (p0_01,  1, Gpio, Disconnected),
+    P0_02: (p0_02,  2, Gpio, Disconnected),
+    P0_03: (p0_03,  3, Gpio, Disconnected),
+    P0_04: (p0_04,  4, Gpio, Disconnected),
+    P0_05: (p0_05,  5, Gpio, Disconnected),
+    P0_06: (p0_06,  6, Gpio, Disconnected),
+    P0_07: (p0_07,  7, Gpio, Disconnected),
+    P0_08: (p0_08,  8, Gpio, Disconnected),
+    P0_09: (p0_09,  9, Gpio, Disconnected),
+    P0_10: (p0_10, 10, Gpio, Disconnected),
+    P0_11: (p0_11, 11, Gpio, Disconnected),
+    P0_12: (p0_12, 12, Gpio, Disconnected),
+    P0_13: (p0_13, 13, Gpio, Disconnected),
 ]);
