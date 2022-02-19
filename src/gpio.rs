@@ -415,9 +415,9 @@ macro_rules! gpio {
                     /// Convert the pin to be a floating input
                     pub fn into_floating_input(self) -> $PXi <AF, Input<Floating>> {
                         unsafe { 
-                            self.block().out_en_clr.write(|w| w.bits(0x01 << $i));
+                            self.block().out_en_clr.write(|w| w.bits(self.mask()));
                             // Clear pulls for pin, not clear if this is necessary to use modify, #TODO test
-                            self.block().pad_cfg1.modify(|r, w| w.bits(r.bits() & !(0x01 << $i)));
+                            self.block().pad_cfg1.modify(|r, w| w.bits(r.bits() & !self.mask()));
                         };
 
                         $PXi {
@@ -430,9 +430,9 @@ macro_rules! gpio {
                         let pin = self.into_floating_input();
                         unsafe {
                             // Is the modify necessary? PU is '1'
-                            pin.block().ps.modify(|r, w| w.bits(r.bits() | (0x01 << $i)));
+                            pin.block().ps.modify(|r, w| w.bits(r.bits() | pin.mask()));
                             // Enables the pullup
-                            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | (0x01 << $i)));
+                            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | pin.mask()));
                         }
 
                         $PXi {
@@ -445,9 +445,9 @@ macro_rules! gpio {
                         let pin = self.into_floating_input();
                         unsafe {
                             // Is the modify necessary? PU is '0'
-                            pin.block().ps.modify(|r, w| w.bits(r.bits() & !(0x01 << $i)));
+                            pin.block().ps.modify(|r, w| w.bits(r.bits() & !pin.mask()));
                             // Enables the pullup
-                            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | (0x01 << $i)));
+                            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | pin.mask()));
                         }
 
                         $PXi {
@@ -470,7 +470,7 @@ macro_rules! gpio {
                             Level::High => pin.set_high().unwrap(),
                         }
                         unsafe { 
-                            self.block().out_en_set.write(|w| w.bits(0x01 << $i));
+                            self.block().out_en_set.write(|w| w.bits(pin.mask()));
                         }
 
                         pin
@@ -500,7 +500,7 @@ macro_rules! gpio {
                     }
 
                     fn is_low(&self) -> Result<bool, Self::Error> {
-                        Ok(self.block().in_.read().bits() & (1 << $i) == 0)
+                        Ok(self.block().in_.read().bits() & self.mask() == 0)
                     }
                 }
 
@@ -516,7 +516,7 @@ macro_rules! gpio {
                     /// Set the output as high
                     fn set_high(&mut self) -> Result<(), Self::Error> {
                         unsafe {
-                            self.block().out_set.write(|w| w.bits(1u32 << $i))
+                            self.block().out_set.write(|w| w.bits(self.mask()))
                         }
                         Ok(())
                     }
@@ -526,7 +526,7 @@ macro_rules! gpio {
                         // NOTE(unsafe) atomic write to a stateless register - TODO(AJM) verify?
                         // TODO - I wish I could do something like `.pins$i()`...
                         unsafe {
-                            self.block().out_clr.write(|w| w.bits(1u32 << $i));
+                            self.block().out_clr.write(|w| w.bits(self.mask()));
                         }
                         Ok(())
                     }
@@ -554,7 +554,7 @@ macro_rules! gpio {
                     fn is_set_low(&self) -> Result<bool, Self::Error> {
                         // NOTE(unsafe) atomic read with no side effects - TODO(AJM) verify?
                         // TODO - I wish I could do something like `.pins$i()`...
-                        Ok(self.block().out.read().bits() & (1 << $i) == 0)
+                        Ok(self.block().out.read().bits() & self.mask() == 0)
                     }
                 }
             )+      
