@@ -7,6 +7,7 @@
 /// | 24 TQFN | GPIO0[13:0]    |  14  |
 
 use core::{marker::PhantomData};
+use cortex_m::peripheral::cbp::RegisterBlock;
 use void::Void;
 use embedded_hal::digital::v2::{InputPin, OutputPin, StatefulOutputPin};
 use crate::pac::{gpio0 as gpio, GPIO0 as P0};
@@ -26,12 +27,17 @@ pub struct AF2;
 /// Alternate Function 3
 pub struct AF3;
 
-
 pub trait AltFn{}
-
+impl AltFn for Gpio{}
 impl AltFn for AF1{}
 impl AltFn for AF2{}
 impl AltFn for AF3{}
+
+enum AFModes {
+    AF1,
+    AF2,
+    AF3,
+}
 
 /// Input mode (type state)
 pub struct Input<MODE>{
@@ -91,15 +97,15 @@ impl DriveStrength {
 // across all of the possible pins
 // ===============================================================
 /// Generic $PX pin
-pub struct Pin<AF, MODE> {
+pub struct Pin<AF, IO> {
     pin: u8,
     _af: PhantomData<AF>,
-    _io: PhantomData<MODE>,
+    _io: PhantomData<IO>,
 }
 
 // `<MODE>` Must precede the type to remain generic.
-impl<AF, MODE> Pin<AF, MODE> {
-    // New should be made private once the macro rules are used.
+impl<AF, IO> Pin<AF, IO> {
+
     fn new(pin:u8) -> Self {
         Self {
             pin,
@@ -113,18 +119,60 @@ impl<AF, MODE> Pin<AF, MODE> {
         self.pin
     }
 
+    fn mask(&self) -> u32 {
+        0x01 << self.pin()
+    }
+
     fn block(&self) -> &gpio::RegisterBlock{
         let ptr = unsafe { &*P0::ptr() };
         ptr
+    }
+
+    fn set_mode_gpio(self) -> Pin<Gpio, IO>{
+        unsafe{
+            self.block().en_set.write(|w| w.bits(self.mask()));
+            self.block().en1_clr.write(|w| w.bits(self.mask()));
+            self.block().en2_clr.write(|w| w.bits(self.mask()));
+        }
+        Pin::<Gpio, IO>::new(self.pin())
+    }
+
+    fn set_mode_af1(self) -> Pin<AF1, IO>{
+        unsafe{
+            self.block().en_clr.write(|w| w.bits(self.mask()));
+            self.block().en1_clr.write(|w| w.bits(self.mask()));
+            self.block().en2_clr.write(|w| w.bits(self.mask()));
+        }
+        Pin::<AF1, IO>::new(self.pin())
+    }
+
+    fn set_mode_af2(self) -> Pin<AF2, IO>{
+        unsafe{
+            self.block().en_clr.write(|w| w.bits(self.mask()));
+            self.block().en1_set.write(|w| w.bits(self.mask()));
+            self.block().en2_clr.write(|w| w.bits(self.mask()));
+        }
+        Pin::<AF2, IO>::new(self.pin())
+    }
+
+    fn set_mode_af3(self) -> Pin<AF3, IO>{
+        unsafe{
+            self.block().en_set.write(|w| w.bits(self.mask()));
+            self.block().en1_set.write(|w| w.bits(self.mask()));
+            self.block().en2_clr.write(|w| w.bits(self.mask()));
+        }
+        Pin::<AF3, IO>::new(self.pin())
     }
 
     pub fn into_floating_input(self) -> Pin<AF, Input<Floating>> {
         
         unsafe{ 
             // Turn output off
-            self.block().out_en_clr.write(|w| w.bits(0x01 << self.pin())); 
+            self.block().out_en_clr.write(|w| w.bits(self.mask())); 
+            // Select GPIO Mode
+            
             // Clear pulls for pin, not clear if this is necessary to use modify, #TODO test
-            self.block().pad_cfg1.modify(|r, w| w.bits(r.bits() & !(0x01 << self.pin())));
+            self.block().pad_cfg1.modify(|r, w| w.bits(r.bits() & !self.mask()));
         }
         
         Pin {
@@ -137,10 +185,10 @@ impl<AF, MODE> Pin<AF, MODE> {
     pub fn into_pullup_input(self) -> Pin<AF, Input<PullUp>> { // TODO Figure out how to use traits better
         let pin = self.into_floating_input();
         unsafe {
-            // Is the modify necessary? PU is '1'
-            pin.block().ps.modify(|r, w| w.bits(r.bits() | (0x01 << pin.pin())));
+            //  PU is '1'
+            pin.block().ps.modify(|r, w| w.bits(r.bits() | pin.mask()));
             // Enables the pullup
-            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | (0x01 << pin.pin())));
+            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | pin.mask()));
         }
         Pin {
             pin: pin.pin,
@@ -151,10 +199,10 @@ impl<AF, MODE> Pin<AF, MODE> {
     pub fn into_pulldown_input(self) -> Pin<AF, Input<PullDown>> {
         let pin = self.into_floating_input();
         unsafe {
-            // Is the modify necessary? PU is '0'
-            pin.block().ps.modify(|r, w| w.bits(r.bits() & !(0x01 << pin.pin())));
+            // PU is '0'
+            pin.block().ps.modify(|r, w| w.bits(r.bits() & !pin.mask()));
             // Enables the pullup
-            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | (0x01 << pin.pin())));
+            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | pin.mask()));
         }
         Pin {
             pin: pin.pin,
@@ -262,6 +310,9 @@ macro_rules! gpio {
                 PullUp,
                 PushPull,
                 Gpio,
+                AF1,
+                AF2,
+                AF3,
                 PhantomData,
                 $PX
             };
@@ -307,11 +358,64 @@ macro_rules! gpio {
                         ptr
                     }
 
+                    fn mask(&self) -> u32 {
+                        0x01 << $i
+                    }
+
+                    pub fn set_mode_gpio(self) -> $PXi <Gpio, IO>{
+                        unsafe{
+                            self.block().en_set.write(|w| w.bits(self.mask()));
+                            self.block().en1_clr.write(|w| w.bits(self.mask()));
+                            self.block().en2_clr.write(|w| w.bits(self.mask()));
+                        }
+                        $PXi {
+                            _af: PhantomData,
+                            _io: PhantomData,
+                        }
+                    }
+                
+                    pub fn set_mode_af1(self) -> $PXi <AF1, IO>{
+                        unsafe{
+                            self.block().en_clr.write(|w| w.bits(self.mask()));
+                            self.block().en1_clr.write(|w| w.bits(self.mask()));
+                            self.block().en2_clr.write(|w| w.bits(self.mask()));
+                        }
+                        $PXi {
+                            _af: PhantomData,
+                            _io: PhantomData,
+                        }
+                    }
+                
+                    pub fn set_mode_af2(self) -> $PXi <AF2, IO>{
+                        unsafe{
+                            self.block().en_clr.write(|w| w.bits(self.mask()));
+                            self.block().en1_set.write(|w| w.bits(self.mask()));
+                            self.block().en2_clr.write(|w| w.bits(self.mask()));
+                        }
+                        $PXi {
+                            _af: PhantomData,
+                            _io: PhantomData,
+                        }
+                    }
+                
+                    pub fn set_mode_af3(self) -> $PXi <AF3, IO>{
+                        unsafe{
+                            self.block().en_set.write(|w| w.bits(self.mask()));
+                            self.block().en1_set.write(|w| w.bits(self.mask()));
+                            self.block().en2_clr.write(|w| w.bits(self.mask()));
+                        }
+                        $PXi {
+                            _af: PhantomData,
+                            _io: PhantomData,
+                        }
+                        
+                        // Equivalent to $PXi{_af: PhantomData::<AF3>, _io: PhantomData::<IO>}
+                    }
+
                     /// Convert the pin to be a floating input
                     pub fn into_floating_input(self) -> $PXi <AF, Input<Floating>> {
                         unsafe { 
-                            // Turn output off
-                            self.block().out_en_clr.write(|w| w.bits(0x01 << $i)); 
+                            self.block().out_en_clr.write(|w| w.bits(0x01 << $i));
                             // Clear pulls for pin, not clear if this is necessary to use modify, #TODO test
                             self.block().pad_cfg1.modify(|r, w| w.bits(r.bits() & !(0x01 << $i)));
                         };
@@ -365,7 +469,6 @@ macro_rules! gpio {
                             Level::Low  => pin.set_low().unwrap(),
                             Level::High => pin.set_high().unwrap(),
                         }
-
                         unsafe { 
                             self.block().out_en_set.write(|w| w.bits(0x01 << $i));
                         }
