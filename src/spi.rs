@@ -3,14 +3,14 @@ use nb;
 use max32660_pac::SPI17Y as SPI0;
 use max32660_pac::SPIMSS as SPI1;
 use crate::gpio::p0::Parts;
-use crate::gpio::{Pin, Input, Floating, Output, PushPull};
+use crate::gpio::{Pin, Input, Floating, Output, PushPull, AltFxn};
 
 pub enum SpiPort{
     Spi0,
     Spi1,
 }
 
-pub struct Pins<AF>{
+pub struct Pins<AF: AltFxn>{
     //sclk: Pin<AF, Output<PushPull>>,
     miso: Option<Pin<AF, Input<Floating>>>,
     mosi: Option<Pin<AF, Output<PushPull>>>

@@ -72,6 +72,7 @@ dependencies = [
  "cortex-m",
  "embedded-hal",
  "max32660-pac",
+ "nb 1.0.0",
  "void",
 ]
 
