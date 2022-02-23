@@ -7,7 +7,6 @@
 /// | 24 TQFN | GPIO0[13:0]    |  14  |
 
 use core::{marker::PhantomData};
-use cortex_m::peripheral::cbp::RegisterBlock;
 use void::Void;
 use embedded_hal::digital::v2::{InputPin, OutputPin, StatefulOutputPin};
 use crate::pac::{gpio0 as gpio, GPIO0 as P0};
@@ -27,18 +26,54 @@ pub struct AF2;
 /// Alternate Function 3
 pub struct AF3;
 
-pub trait AltFn {}
-impl AltFn for Gpio{}
-impl AltFn for AF1{}
-impl AltFn for AF2{}
-impl AltFn for AF3{}
+/// Trait to enable bounds on Pin Alternate Mode types
+pub trait AltMode{}
 
-// enum AFModes {
-//     Gpio,
-//     AF1,
-//     AF2,
-//     AF3,
-// }
+impl AltMode for Gpio {}
+impl AltMode for AF1 {}
+impl AltMode for AF2 {}
+impl AltMode for AF3 {}
+
+
+pub trait AltFn {
+    fn set_mode(&mut self);
+}
+impl <IO> AltFn for Pin<Gpio, IO>{
+    fn set_mode(&mut self) {
+        unsafe{
+            self.block().en_set.write(|w| w.bits(self.mask()));
+            self.block().en1_clr.write(|w| w.bits(self.mask()));
+            self.block().en2_clr.write(|w| w.bits(self.mask()));
+        }
+    }
+}
+impl <IO> AltFn for Pin<AF1, IO> {
+    fn set_mode(&mut self) {
+        unsafe{
+            self.block().en_clr.write(|w| w.bits(self.mask()));
+            self.block().en1_clr.write(|w| w.bits(self.mask()));
+            self.block().en2_clr.write(|w| w.bits(self.mask()));
+        }
+    }
+}
+impl <IO> AltFn for Pin<AF2, IO> {
+    fn set_mode(&mut self) {
+        unsafe{
+            self.block().en_clr.write(|w| w.bits(self.mask()));
+            self.block().en1_set.write(|w| w.bits(self.mask()));
+            self.block().en2_clr.write(|w| w.bits(self.mask()));
+        }
+    }
+}
+impl <IO> AltFn for Pin<AF3, IO> {
+    fn set_mode(&mut self) {
+        unsafe{
+            self.block().en_set.write(|w| w.bits(self.mask()));
+            self.block().en1_set.write(|w| w.bits(self.mask()));
+            self.block().en2_clr.write(|w| w.bits(self.mask()));
+        }
+    }
+}
 
 /// Input mode (type state)
 pub struct Input<MODE>{
@@ -98,7 +133,7 @@ impl DriveStrength {
 // across all of the possible pins
 // ===============================================================
 /// Generic $PX pin
-pub struct Pin<AF: AltFn, IO> {
+pub struct Pin<AF: AltMode, IO> {
     pin: u8,
     _af: PhantomData<AF>,
     _io: PhantomData<IO>,
@@ -109,7 +144,7 @@ pub struct Pin<AF: AltFn, IO> {
 // into::<AF1, ThisIO>::()
 
 // `<MODE>` Must precede the type to remain generic.
-impl<AF: AltFn, IO> Pin<AF, IO> {
+impl<AF:AltMode, IO> Pin<AF, IO> {
 
     fn new(pin:u8) -> Self {
         Self {
@@ -133,82 +168,14 @@ impl<AF: AltFn, IO> Pin<AF, IO> {
         ptr
     }
 
-    fn into_new_mode<A: AltFn, I>(self) -> Self {
-        Self::<A, I>::new(self.pin)
-    }
-
-    // in user land.
-    let my_pin = my_pin.into_new_mode::<AF2, Input<Floating>>();
-    my_pin.op1();
-    my_pin.op2();
-    // later on
-    let my_pin.into_new_mode::<GPIO, Output<Floating>>();
-    my_pin.op1(); // Fail to compile.
-    my_pin.op2(); // Does work -- impl'd for both of these typestates.
-
-    fn set_mode(self, mode: AFModes) -> Self {
-        let n: Pin<Gpio, u8> = Self::new(0u8);
-        n
-        // Self::<Gpio, u8>::new(self.pin())
-        // match mode {
-        //     AFModes::Gpio => {
-        //         unsafe{
-        //             self.block().en_set.write(|w| w.bits(self.mask()));
-        //             self.block().en1_clr.write(|w| w.bits(self.mask()));
-        //             self.block().en2_clr.write(|w| w.bits(self.mask()));
-        //         }
-        //         Pin::<Gpio, IO>::new(self.pin())
-        //     },
-        //     AFModes::AF1 => {
-        //         unsafe{
-        //             self.block().en_clr.write(|w| w.bits(self.mask()));
-        //             self.block().en1_clr.write(|w| w.bits(self.mask()));
-        //             self.block().en2_clr.write(|w| w.bits(self.mask()));
-        //         }
-        //         Pin::<AF1, IO>::new(self.pin())
-        //     },
-        //     _ => unimplemented!() 
-        // }
-    } 
-
-    fn set_mode_gpio(self) -> Pin<Gpio, IO>{
-        unsafe{
-            self.block().en_set.write(|w| w.bits(self.mask()));
-            self.block().en1_clr.write(|w| w.bits(self.mask()));
-            self.block().en2_clr.write(|w| w.bits(self.mask()));
-        }
-        Pin::<Gpio, IO>::new(self.pin())
-    }
-
-    pub fn set_mode_af1(self) -> Pin<AF1, IO>{
-        unsafe{
-            self.block().en_clr.write(|w| w.bits(self.mask()));
-            self.block().en1_clr.write(|w| w.bits(self.mask()));
-            self.block().en2_clr.write(|w| w.bits(self.mask()));
-        }
-        Pin::<AF1, IO>::new(self.pin())
-    }
-
-    fn set_mode_af2(self) -> Pin<AF2, IO>{
-        unsafe{
-            self.block().en_clr.write(|w| w.bits(self.mask()));
-            self.block().en1_set.write(|w| w.bits(self.mask()));
-            self.block().en2_clr.write(|w| w.bits(self.mask()));
-        }
-        Pin::<AF2, IO>::new(self.pin())
-    }
-
-    fn set_mode_af3(self) -> Pin<AF3, IO>{
-        unsafe{
-            self.block().en_set.write(|w| w.bits(self.mask()));
-            self.block().en1_set.write(|w| w.bits(self.mask()));
-            self.block().en2_clr.write(|w| w.bits(self.mask()));
-        }
-        Pin::<AF3, IO>::new(self.pin())
+    pub fn into_mode<M: AltMode>(self) -> Pin<M,IO> 
+            where Pin<M,IO>: AltFn {
+        let mut pin:Pin<M,IO> = Pin::new(self.pin);
+        pin.set_mode();
+        pin
     }
 
     pub fn into_floating_input(self) -> Pin<AF, Input<Floating>> {
-        
         unsafe{ 
             // Turn output off
             self.block().out_en_clr.write(|w| w.bits(self.mask())); 
@@ -273,13 +240,7 @@ impl<AF: AltFn, IO> Pin<AF, IO> {
     }
 }
 
-impl <MODE> Pin<Gpio, MODE> {
-    fn into_af(&self) -> Pin<AF3, MODE> {
-        unimplemented!()
-    }
-}
-
-impl <AF, MODE> InputPin for Pin <AF,Input<MODE>> {
+impl <AF: AltMode, MODE> InputPin for Pin <AF,Input<MODE>> {
     type Error = Void;
 
     fn is_high(&self) -> Result<bool, Self::Error> {
@@ -290,7 +251,7 @@ impl <AF, MODE> InputPin for Pin <AF,Input<MODE>> {
     }
 }
 
-impl <AF, MODE> OutputPin for Pin <AF, Output<MODE>> {
+impl <AF: AltMode, MODE> OutputPin for Pin <AF, Output<MODE>> {
     type Error = Void;
     fn set_low(&mut self) -> Result<(), Self::Error> {
         unsafe {
@@ -306,7 +267,7 @@ impl <AF, MODE> OutputPin for Pin <AF, Output<MODE>> {
     }
 }
 
-impl <AF, MODE> StatefulOutputPin for Pin<AF, Output<MODE>> {
+impl <AF: AltMode, MODE> StatefulOutputPin for Pin<AF, Output<MODE>> {
     /// Is the output pin set as high?
     fn is_set_high(&self) -> Result<bool, Self::Error> {
         self.is_set_low().map(|v| !v)
@@ -318,7 +279,7 @@ impl <AF, MODE> StatefulOutputPin for Pin<AF, Output<MODE>> {
     }
 }
 
-impl <AF, MODE> Pin<AF, Output<MODE>> {
+impl <AF: AltMode, MODE> Pin<AF, Output<MODE>> {
     pub fn set_drive_strength(&self, drive_strength: DriveStrength) -> () {
         let ds_settings = drive_strength.get_setting();
         let ds_val = ds_settings.ds as u32;
@@ -353,11 +314,8 @@ macro_rules! gpio {
                 PullUp,
                 PushPull,
                 Gpio,
-                AF1,
-                AF2,
-                AF3,
                 PhantomData,
-                AltFn,
+                AltMode,
                 $PX
             };
             use embedded_hal::digital::v2::{OutputPin, StatefulOutputPin, InputPin};
@@ -390,12 +348,12 @@ macro_rules! gpio {
             // defined interface
             // ===============================================================
             $(
-                pub struct $PXi<AF, IO> {
+                pub struct $PXi<AF: AltMode, IO> {
                     _af: PhantomData <AF>,
                     _io: PhantomData <IO>,
                 }
 
-                impl<AF, IO> $PXi<AF, IO> {
+                impl<AF: AltMode, IO> $PXi<AF, IO> {
 
                     fn block(&self) -> &gpio::RegisterBlock{
                         let ptr = unsafe { &*$PX::ptr() };
@@ -404,60 +362,6 @@ macro_rules! gpio {
 
                     fn mask(&self) -> u32 {
                         0x01 << $i
-                    }
-
-                    pub fn do_something<T: AltFn>(self, a: T){
-                        unimplemented!();
-                    }
-
-                    pub fn set_mode_gpio(self) -> $PXi <Gpio, IO>{
-                        unsafe{
-                            self.block().en_set.write(|w| w.bits(self.mask()));
-                            self.block().en1_clr.write(|w| w.bits(self.mask()));
-                            self.block().en2_clr.write(|w| w.bits(self.mask()));
-                        }
-                        $PXi {
-                            _af: PhantomData,
-                            _io: PhantomData,
-                        }
-                    }
-                
-                    pub fn set_mode_af1(self) -> $PXi <AF1, IO>{
-                        unsafe{
-                            self.block().en_clr.write(|w| w.bits(self.mask()));
-                            self.block().en1_clr.write(|w| w.bits(self.mask()));
-                            self.block().en2_clr.write(|w| w.bits(self.mask()));
-                        }
-                        $PXi {
-                            _af: PhantomData,
-                            _io: PhantomData,
-                        }
-                    }
-                
-                    pub fn set_mode_af2(self) -> $PXi <AF2, IO>{
-                        unsafe{
-                            self.block().en_clr.write(|w| w.bits(self.mask()));
-                            self.block().en1_set.write(|w| w.bits(self.mask()));
-                            self.block().en2_clr.write(|w| w.bits(self.mask()));
-                        }
-                        $PXi {
-                            _af: PhantomData,
-                            _io: PhantomData,
-                        }
-                    }
-                
-                    pub fn set_mode_af3(self) -> $PXi <AF3, IO>{
-                        unsafe{
-                            self.block().en_set.write(|w| w.bits(self.mask()));
-                            self.block().en1_set.write(|w| w.bits(self.mask()));
-                            self.block().en2_clr.write(|w| w.bits(self.mask()));
-                        }
-                        $PXi {
-                            _af: PhantomData,
-                            _io: PhantomData,
-                        }
-                        
-                        // Equivalent to $PXi{_af: PhantomData::<AF3>, _io: PhantomData::<IO>}
                     }
 
                     /// Convert the pin to be a floating input
@@ -540,7 +444,7 @@ macro_rules! gpio {
                     }
                 }
 
-                impl<AF, IO> InputPin for $PXi<AF, Input<IO>> {
+                impl<AF: AltMode, IO> InputPin for $PXi<AF, Input<IO>> {
                     type Error = Void;
 
                     fn is_high(&self) -> Result<bool, Self::Error> {
@@ -552,13 +456,13 @@ macro_rules! gpio {
                     }
                 }
 
-                impl<AF, IO> From<$PXi<AF, IO>> for Pin<AF, IO> {
+                impl<AF: AltMode, IO> From<$PXi<AF, IO>> for Pin<AF, IO> {
                     fn from(value: $PXi<AF, IO>) -> Self {
                         value.degrade()
                     }
                 }
 
-                impl<AF, IO> OutputPin for $PXi<AF, Output<IO>> {
+                impl<AF: AltMode, IO> OutputPin for $PXi<AF, Output<IO>> {
                     type Error = Void;
 
                     /// Set the output as high
@@ -580,7 +484,7 @@ macro_rules! gpio {
                     }
                 }
 
-                impl <AF, IO> $PXi <AF, Output<IO>> {
+                impl <AF: AltMode, IO> $PXi <AF, Output<IO>> {
                     pub fn set_drive_strength(&self, drive_strength: DriveStrength) -> () {
                         let ds_settings = drive_strength.get_setting();
                         let ds_val = ds_settings.ds as u32;
@@ -592,7 +496,7 @@ macro_rules! gpio {
                     }
                 }
 
-                impl<AF, IO> StatefulOutputPin for $PXi<AF, Output<IO>> {
+                impl<AF: AltMode, IO> StatefulOutputPin for $PXi<AF, Output<IO>> {
                     /// Is the output pin set as high?
                     fn is_set_high(&self) -> Result<bool, Self::Error> {
                         self.is_set_low().map(|v| !v)

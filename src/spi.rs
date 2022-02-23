@@ -10,11 +10,11 @@ pub enum SpiPort{
     Spi1,
 }
 
-pub struct Pins<AF>{
-    //sclk: Pin<AF, Output<PushPull>>,
-    miso: Option<Pin<AF, Input<Floating>>>,
-    mosi: Option<Pin<AF, Output<PushPull>>>
-}
+// pub struct Pins<AF>{
+//     //sclk: Pin<AF, Output<PushPull>>,
+//     miso: Option<Pin<AF, Input<Floating>>>,
+//     mosi: Option<Pin<AF, Output<PushPull>>>
+// }
 
 // pub fn configure_spi_pins(port: SpiPort, parts: Parts) -> Pins<AF1>{
 //     match port {
