@@ -1,11 +1,11 @@
+use crate::gpio::p0::Parts;
+use crate::gpio::{Floating, Input, Output, Pin, PushPull};
 use embedded_hal::spi::{FullDuplex, Mode, Phase, Polarity};
-use nb;
 use max32660_pac::SPI17Y as SPI0;
 use max32660_pac::SPIMSS as SPI1;
-use crate::gpio::p0::Parts;
-use crate::gpio::{Pin, Input, Floating, Output, PushPull};
+use nb;
 
-pub enum SpiPort{
+pub enum SpiPort {
     Spi0,
     Spi1,
 }

@@ -1,11 +1,10 @@
-//! Delays. 
+//! Delays.
 // #TODO simplify casts with macro and #FIXME HFCLK frequency assumption may be incorrect?
 use cortex_m::peripheral::syst::SystClkSource;
 use cortex_m::peripheral::SYST;
 use embedded_hal::blocking::delay::{DelayMs, DelayUs};
 
 use crate::clocks::HFCLK_FREQ;
-
 
 /// System timer (SysTick) as a delay provider.
 pub struct Delay {
