@@ -17,5 +17,7 @@ version = "0.2.6"
 
 [features]
 doc = []
+pkg-tqfn = []
+pkg-wlp = []
 rt = ["max32660-pac/rt"]
-default = ["rt"]
+default = ["rt", "pkg-tqfn"]

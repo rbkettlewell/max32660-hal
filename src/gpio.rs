@@ -38,7 +38,7 @@ impl AltMode for AF3 {}
 pub trait AltFn {
     fn set_mode(&mut self);
 }
-impl <IO> AltFn for Pin<Gpio, IO>{
+impl <IO, const IDX: u8> AltFn for Pin<Gpio, IO, IDX>{
     fn set_mode(&mut self) {
         unsafe{
             self.block().en_set.write(|w| w.bits(self.mask()));
@@ -47,7 +47,7 @@ impl <IO> AltFn for Pin<Gpio, IO>{
         }
     }
 }
-impl <IO> AltFn for Pin<AF1, IO> {
+impl <IO, const IDX: u8> AltFn for Pin<AF1, IO, IDX> {
     fn set_mode(&mut self) {
         unsafe{
             self.block().en_clr.write(|w| w.bits(self.mask()));
@@ -56,7 +56,7 @@ impl <IO> AltFn for Pin<AF1, IO> {
         }
     }
 }
-impl <IO> AltFn for Pin<AF2, IO> {
+impl <IO, const IDX: u8> AltFn for Pin<AF2, IO, IDX> {
     fn set_mode(&mut self) {
         unsafe{
             self.block().en_clr.write(|w| w.bits(self.mask()));
@@ -65,7 +65,7 @@ impl <IO> AltFn for Pin<AF2, IO> {
         }
     }
 }
-impl <IO> AltFn for Pin<AF3, IO> {
+impl <IO, const IDX: u8> AltFn for Pin<AF3, IO, IDX> {
     fn set_mode(&mut self) {
         unsafe{
             self.block().en_set.write(|w| w.bits(self.mask()));
@@ -133,22 +133,16 @@ impl DriveStrength {
 // across all of the possible pins
 // ===============================================================
 /// Generic $PX pin
-pub struct Pin<AF: AltMode, IO> {
-    pin: u8,
+pub struct Pin<AF: AltMode, IO, const IDX: u8> {
     _af: PhantomData<AF>,
     _io: PhantomData<IO>,
 }
 
-// into_this_af_and_that_io()
-// into_this_af_and_other_io()
-// into::<AF1, ThisIO>::()
-
 // `<MODE>` Must precede the type to remain generic.
-impl<AF:AltMode, IO> Pin<AF, IO> {
+impl<AF:AltMode, IO, const IDX: u8> Pin<AF, IO, IDX> {
 
-    fn new(pin:u8) -> Self {
+    pub     fn new() -> Self {
         Self {
-            pin,
             _af: PhantomData, 
             _io: PhantomData,
         }
@@ -156,11 +150,11 @@ impl<AF:AltMode, IO> Pin<AF, IO> {
 
     #[inline]
     fn pin(&self) -> u8 {
-        self.pin
+        IDX
     }
 
     fn mask(&self) -> u32 {
-        0x01 << self.pin()
+        0x01 << (IDX as u32)
     }
 
     fn block(&self) -> &gpio::RegisterBlock{
@@ -168,14 +162,14 @@ impl<AF:AltMode, IO> Pin<AF, IO> {
         ptr
     }
 
-    pub fn into_mode<M: AltMode>(self) -> Pin<M,IO> 
-            where Pin<M,IO>: AltFn {
-        let mut pin:Pin<M,IO> = Pin::new(self.pin);
+    pub fn into_mode<M: AltMode>(self) -> Pin<M,IO,IDX> 
+            where Pin<M,IO,IDX>: AltFn {
+        let mut pin = Pin::new();
         pin.set_mode();
         pin
     }
 
-    pub fn into_floating_input(self) -> Pin<AF, Input<Floating>> {
+    pub fn into_floating_input(self) -> Pin<AF, Input<Floating>, IDX> {
         unsafe{ 
             // Turn output off
             self.block().out_en_clr.write(|w| w.bits(self.mask())); 
@@ -184,15 +178,10 @@ impl<AF:AltMode, IO> Pin<AF, IO> {
             // Clear pulls for pin, not clear if this is necessary to use modify, #TODO test
             self.block().pad_cfg1.modify(|r, w| w.bits(r.bits() & !self.mask()));
         }
-        
-        Pin {
-            pin: self.pin,
-            _af: PhantomData,
-            _io: PhantomData,
-        }
+        Pin::new()
     }
 
-    pub fn into_pullup_input(self) -> Pin<AF, Input<PullUp>> { // TODO Figure out how to use traits better
+    pub fn into_pullup_input(self) -> Pin<AF, Input<PullUp>, IDX> { 
         let pin = self.into_floating_input();
         unsafe {
             //  PU is '1'
@@ -200,13 +189,9 @@ impl<AF:AltMode, IO> Pin<AF, IO> {
             // Enables the pullup
             pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | pin.mask()));
         }
-        Pin {
-            pin: pin.pin,
-            _af: PhantomData,
-            _io: PhantomData,
-        }
+        Pin::new()
     }
-    pub fn into_pulldown_input(self) -> Pin<AF, Input<PullDown>> {
+    pub fn into_pulldown_input(self) -> Pin<AF, Input<PullDown>, IDX> {
         let pin = self.into_floating_input();
         unsafe {
             // PU is '0'
@@ -214,20 +199,11 @@ impl<AF:AltMode, IO> Pin<AF, IO> {
             // Enables the pullup
             pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | pin.mask()));
         }
-        Pin {
-            pin: pin.pin,
-            _af: PhantomData,
-            _io: PhantomData,
-        }
+        Pin::new()
     }
 
-    pub fn into_push_pull_output(self, initial_output: Level) -> Pin<AF, Output<PushPull>> {
-        let mut pin = Pin {
-            pin: self.pin,
-            _af: PhantomData,
-            _io: PhantomData,
-        };
-
+    pub fn into_push_pull_output(self, initial_output: Level) -> Pin<AF, Output<PushPull>, IDX> {
+        let mut pin = Pin::new();
         unsafe { 
             self.block().out_en_set.write(|w| w.bits(0x01 << self.pin()));
         }
@@ -240,7 +216,7 @@ impl<AF:AltMode, IO> Pin<AF, IO> {
     }
 }
 
-impl <AF: AltMode, MODE> InputPin for Pin <AF,Input<MODE>> {
+impl <AF: AltMode, MODE, const IDX: u8> InputPin for Pin <AF, Input<MODE>, IDX> {
     type Error = Void;
 
     fn is_high(&self) -> Result<bool, Self::Error> {
@@ -251,7 +227,7 @@ impl <AF: AltMode, MODE> InputPin for Pin <AF,Input<MODE>> {
     }
 }
 
-impl <AF: AltMode, MODE> OutputPin for Pin <AF, Output<MODE>> {
+impl <AF: AltMode, MODE, const IDX: u8> OutputPin for Pin <AF, Output<MODE>, IDX> {
     type Error = Void;
     fn set_low(&mut self) -> Result<(), Self::Error> {
         unsafe {
@@ -267,7 +243,7 @@ impl <AF: AltMode, MODE> OutputPin for Pin <AF, Output<MODE>> {
     }
 }
 
-impl <AF: AltMode, MODE> StatefulOutputPin for Pin<AF, Output<MODE>> {
+impl <AF: AltMode, MODE, const IDX: u8> StatefulOutputPin for Pin<AF, Output<MODE>, IDX> {
     /// Is the output pin set as high?
     fn is_set_high(&self) -> Result<bool, Self::Error> {
         self.is_set_low().map(|v| !v)
@@ -279,8 +255,8 @@ impl <AF: AltMode, MODE> StatefulOutputPin for Pin<AF, Output<MODE>> {
     }
 }
 
-impl <AF: AltMode, MODE> Pin<AF, Output<MODE>> {
-    pub fn set_drive_strength(&self, drive_strength: DriveStrength) -> () {
+impl <AF: AltMode, MODE, const IDX: u8> Pin<AF, Output<MODE>, IDX> {
+    pub fn set_drive_strength(&mut self, drive_strength: DriveStrength) -> () {
         let ds_settings = drive_strength.get_setting();
         let ds_val = ds_settings.ds as u32;
         let ds1_val = ds_settings.ds1 as u32;
@@ -294,7 +270,7 @@ impl <AF: AltMode, MODE> Pin<AF, Output<MODE>> {
 macro_rules! gpio {
     (
         $PX: ident, $px: ident, [
-            $($PXi: ident: ($pxi: ident, $i: expr, $AF: ty, $IO: ty),)+
+            $(($pxi: ident, $i: expr),)+
         ]
     ) => {
         // GPIO
@@ -302,233 +278,62 @@ macro_rules! gpio {
             
             use super::{
                 Pin,
-
-                Floating,
-                Disconnected,
-                DriveStrength,
-                Input,
-                Level,
-                //OpenDrain,
-                Output,
-                PullDown,
-                PullUp,
-                PushPull,
                 Gpio,
-                PhantomData,
-                AltMode,
+                Disconnected,
                 $PX
             };
-            use embedded_hal::digital::v2::{OutputPin, StatefulOutputPin, InputPin};
-            // FIXME for multiport future MAX326xx support
-            use crate::pac::gpio0 as gpio;
-            use void::Void;
 
             /// GPIO parts
             pub struct Parts {
                 $(
                     /// Pin
-                    pub $pxi: $PXi<$AF, $IO>,
+                    pub $pxi: Pin<Gpio, Disconnected, $i>,
                 )+
             }
 
             impl Parts {
+                // TODO is this _gpio input adding clarity, or clutter
                 pub fn new(_gpio: $PX) -> Self {
                     Self {
                         $(
-                            $pxi: $PXi {
-                                _af: PhantomData,
-                                _io: PhantomData,
-                            },
+                            $pxi: Pin::new(),
                         )+
                     }
                 }
             }
-            // ===============================================================
-            // Implement each of the typed pins usable through the nrf-hal
-            // defined interface
-            // ===============================================================
-            $(
-                pub struct $PXi<AF: AltMode, IO> {
-                    _af: PhantomData <AF>,
-                    _io: PhantomData <IO>,
-                }
-
-                impl<AF: AltMode, IO> $PXi<AF, IO> {
-
-                    fn block(&self) -> &gpio::RegisterBlock{
-                        let ptr = unsafe { &*$PX::ptr() };
-                        ptr
-                    }
-
-                    fn mask(&self) -> u32 {
-                        0x01 << $i
-                    }
-
-                    /// Convert the pin to be a floating input
-                    pub fn into_floating_input(self) -> $PXi <AF, Input<Floating>> {
-                        unsafe { 
-                            self.block().out_en_clr.write(|w| w.bits(self.mask()));
-                            // Clear pulls for pin, not clear if this is necessary to use modify, #TODO test
-                            self.block().pad_cfg1.modify(|r, w| w.bits(r.bits() & !self.mask()));
-                        };
-
-                        $PXi {
-                            _af: PhantomData,
-                            _io: PhantomData,
-                        }
-                    }
-
-                    pub fn into_pullup_input(self) -> $PXi <AF, Input<PullUp>> {
-                        let pin = self.into_floating_input();
-                        unsafe {
-                            // Is the modify necessary? PU is '1'
-                            pin.block().ps.modify(|r, w| w.bits(r.bits() | pin.mask()));
-                            // Enables the pullup
-                            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | pin.mask()));
-                        }
-
-                        $PXi {
-                            _af: PhantomData,
-                            _io: PhantomData,
-                        }
-                    }
-
-                    pub fn into_pulldown_input(self) -> $PXi<AF, Input<PullDown>> {
-                        let pin = self.into_floating_input();
-                        unsafe {
-                            // Is the modify necessary? PU is '0'
-                            pin.block().ps.modify(|r, w| w.bits(r.bits() & !pin.mask()));
-                            // Enables the pullup
-                            pin.block().pad_cfg1.modify(|r, w| w.bits(r.bits() | pin.mask()));
-                        }
-
-                        $PXi {
-                            _af: PhantomData,
-                            _io: PhantomData,
-                        }
-                    }
-
-                    /// Convert the pin to bepin a push-pull output with normal drive
-                    pub fn into_push_pull_output(self, initial_output: Level)
-                        -> $PXi<AF, Output<PushPull>>
-                    {
-                        let mut pin = $PXi {
-                            _af: PhantomData,
-                            _io: PhantomData,
-                        };
-
-                        match initial_output {
-                            Level::Low  => pin.set_low().unwrap(),
-                            Level::High => pin.set_high().unwrap(),
-                        }
-                        unsafe { 
-                            self.block().out_en_set.write(|w| w.bits(pin.mask()));
-                        }
-
-                        pin
-                    }
-
-                    /// Disconnects the pin.
-                    /// 
-                    /// Determine how to actually disconnect/turn off pins. #FIXME
-                    pub fn into_disconnected(self) -> $PXi<AF, Disconnected> {
-                        self.into_floating_input();
-                        let pin = $PXi::<AF,Disconnected>{_af: PhantomData,_io: PhantomData,};
-
-                        pin
-                    }
-
-                    /// Degrade to a generic pin struct, which can be used with peripherals
-                    pub fn degrade(self) -> Pin<AF, IO> {
-                        Pin::new($i)
-                    }
-                }
-
-                impl<AF: AltMode, IO> InputPin for $PXi<AF, Input<IO>> {
-                    type Error = Void;
-
-                    fn is_high(&self) -> Result<bool, Self::Error> {
-                        self.is_low().map(|v| !v)
-                    }
-
-                    fn is_low(&self) -> Result<bool, Self::Error> {
-                        Ok(self.block().in_.read().bits() & self.mask() == 0)
-                    }
-                }
-
-                impl<AF: AltMode, IO> From<$PXi<AF, IO>> for Pin<AF, IO> {
-                    fn from(value: $PXi<AF, IO>) -> Self {
-                        value.degrade()
-                    }
-                }
-
-                impl<AF: AltMode, IO> OutputPin for $PXi<AF, Output<IO>> {
-                    type Error = Void;
-
-                    /// Set the output as high
-                    fn set_high(&mut self) -> Result<(), Self::Error> {
-                        unsafe {
-                            self.block().out_set.write(|w| w.bits(self.mask()))
-                        }
-                        Ok(())
-                    }
-
-                    /// Set the output as low
-                    fn set_low(&mut self) -> Result<(), Self::Error> {
-                        // NOTE(unsafe) atomic write to a stateless register - TODO(AJM) verify?
-                        // TODO - I wish I could do something like `.pins$i()`...
-                        unsafe {
-                            self.block().out_clr.write(|w| w.bits(self.mask()));
-                        }
-                        Ok(())
-                    }
-                }
-
-                impl <AF: AltMode, IO> $PXi <AF, Output<IO>> {
-                    pub fn set_drive_strength(&self, drive_strength: DriveStrength) -> () {
-                        let ds_settings = drive_strength.get_setting();
-                        let ds_val = ds_settings.ds as u32;
-                        let ds1_val = ds_settings.ds1 as u32;
-                        unsafe{
-                            self.block().ds.modify(|r, w| w.bits(r.bits() | (ds_val << $i)));
-                            self.block().ds1.modify(|r, w| w.bits(r.bits() | (ds1_val << $i)));
-                        } 
-                    }
-                }
-
-                impl<AF: AltMode, IO> StatefulOutputPin for $PXi<AF, Output<IO>> {
-                    /// Is the output pin set as high?
-                    fn is_set_high(&self) -> Result<bool, Self::Error> {
-                        self.is_set_low().map(|v| !v)
-                    }
-
-                    /// Is the output pin set as low?
-                    fn is_set_low(&self) -> Result<bool, Self::Error> {
-                        // NOTE(unsafe) atomic read with no side effects - TODO(AJM) verify?
-                        // TODO - I wish I could do something like `.pins$i()`...
-                        Ok(self.block().out.read().bits() & self.mask() == 0)
-                    }
-                }
-            )+      
         }  
     };
 }
 
 
-// #FIXME should generate the correct number of pins based on which package is being used.
+#[cfg(any(feature = "pkg-wlp"))]
 gpio!(P0, p0, [
-    P0_00: (p0_00,  0, Gpio, Disconnected),
-    P0_01: (p0_01,  1, Gpio, Disconnected),
-    P0_02: (p0_02,  2, Gpio, Disconnected),
-    P0_03: (p0_03,  3, Gpio, Disconnected),
-    P0_04: (p0_04,  4, Gpio, Disconnected),
-    P0_05: (p0_05,  5, Gpio, Disconnected),
-    P0_06: (p0_06,  6, Gpio, Disconnected),
-    P0_07: (p0_07,  7, Gpio, Disconnected),
-    P0_08: (p0_08,  8, Gpio, Disconnected),
-    P0_09: (p0_09,  9, Gpio, Disconnected),
-    P0_10: (p0_10, 10, Gpio, Disconnected),
-    P0_11: (p0_11, 11, Gpio, Disconnected),
-    P0_12: (p0_12, 12, Gpio, Disconnected),
-    P0_13: (p0_13, 13, Gpio, Disconnected),
+    (p0_00, 0),
+    (p0_01, 1),
+    (p0_02, 2),
+    (p0_03, 3),
+    (p0_04, 4),
+    (p0_05, 5),
+    (p0_06, 6),
+    (p0_07, 7),
+    (p0_08, 8),
+    (p0_09, 9),
+]);
+
+#[cfg(any(feature = "pkg-tqfn"))]
+gpio!(P0, p0, [
+    (p0_00, 0),
+    (p0_01, 1),
+    (p0_02, 2),
+    (p0_03, 3),
+    (p0_04, 4),
+    (p0_05, 5),
+    (p0_06, 6),
+    (p0_07, 7),
+    (p0_08, 8),
+    (p0_09, 9),
+    (p0_10, 10),
+    (p0_11, 11),
+    (p0_12, 12),
+    (p0_13, 13),
 ]);
