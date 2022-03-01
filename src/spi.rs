@@ -1,10 +1,13 @@
 use crate::gpio::p0::Parts;
-use crate::gpio::{AltFn, AltMode, Floating, Input, Level, Output, Pin, PushPull, AF1, AF2};
+use crate::gpio::{AltFn, AltMode, Floating, Input, Level, Output, Pin, PushPull, AF1, AF2, Level};
 use core::marker::PhantomData;
 use embedded_hal::spi::{FullDuplex, Mode, Phase, Polarity};
-// use max32660_pac::SPI17Y as SPI0;
-// use max32660_pac::SPIMSS as SPI1;
+use crate::pac::SPI17Y as SPI0;
+use crate::pac::spi17y;
+use crate::pac::SPIMSS as SPI1;
+use crate::pac::spimss;
 use nb;
+use void::Void;
 
 pub struct Spi0;
 
@@ -96,3 +99,78 @@ spi_ports!([
     (new_spi_0, AF1, Spi0, 6, 4, 5, 7),
     (new_spi_1, AF2, Spi1, 2, 0, 1, 3),
 ]);
+
+impl SpiPort<AF1, Spi0, 6, 4, 5, 7>{
+    fn block(&self) -> &spi17y::RegisterBlock {
+        let ptr = unsafe { &*SPI0::ptr() };
+        ptr
+    }
+
+    /// Configures the SPI0 Port polarity, mode
+    pub fn configure(&mut self, mode: Mode, ss_pol: Level, sck_div: u8){
+        // Selects between master and slave mode. Only master mode support currently.
+        self.block().ctrl0.write(|w| w.master().en());
+        // Sets slave select as output.
+        self.block().ctrl0.write(|w| w.ss_io().output());
+        // SS deasserts at the end of the transaction.
+        self.block().ctrl0.write(|w| w.ss_ctrl().deassert());
+        // SS Polarity typically active low.
+        unsafe {
+            if ss_pol == Level::High {
+                self.block().ctrl2.write(|w| w.ss_pol().bits(0x01));
+            }
+            else{
+                self.block().ctrl2.write(|w| w.ss_pol().bits(0x00));
+            }
+            // Number of bits per character
+            self.block().ctrl2.write(|w| w.numbits().bits(8u8));
+        }
+        // Standard SCK polarity for MODE 0/1
+        if mode.polarity == Polarity::IdleHigh {
+            self.block().ctrl2.write(|w|w.cpol().normal());
+        }
+        // Inverted SCK polarity for MODE 2/3
+        else{
+            self.block().ctrl2.write(|w|w.cpol().inverted());
+        }
+        // SCK polarity for MODE 0/2
+        if mode.phase == Phase::CaptureOnFirstTransition{
+            self.block().ctrl2.write(|w| w.cpha().rising_edge());
+        }
+        // SCK polarity for MODE 1/3
+        else{
+            self.block().ctrl2.write(|w|w.cpha().rising_edge());
+        }
+        // Set SPI0 Peripheral Clock Scale
+        unsafe{
+            self.block().clk_cfg.write(|w| w.scale().bits(sck_div))
+        }
+    }
+
+    /// Enables the SPI0 Port
+    pub fn enable(&mut self){
+        // Sets slave select as output.
+        self.block().ctrl0.write(|w| w.en().en());
+    }
+
+    /// Disables the SPI0 Port
+    pub fn disable(&mut self){
+        // Sets slave select as output.
+        self.block().ctrl0.write(|w| w.en().dis());
+    }
+}
+
+impl FullDuplex<u8> for SpiPort<AF1, Spi0, 6, 4, 5, 7> {
+    type Error = Void;
+
+    fn read(&mut self) -> nb::Result<u8, Self::Error> {
+        unimplemented!();
+    }
+
+    fn send(&mut self, word: u8) -> nb::Result<(), Self::Error> {
+        unimplemented!();
+    }
+
+    
+
+}
