@@ -109,8 +109,17 @@ impl SpiPort<AF1, Spi0, 6, 4, 5, 7>{
 
     /// Configures the SPI0 Port polarity, mode
     pub fn configure(&mut self, mode: Mode, ss_active_pol: Level, sck_div: u8){
+        // Ensure SPI block is disabled before configuration
+        self.disable();
         // Selects between master and slave mode. Only master mode support currently.
         self.block().ctrl0.modify(|_, w| w.master().en());
+        // Slave select holds
+        unsafe{
+            self.block().ss_time.modify(|_, w| w.pre().bits(1));
+            self.block().ss_time.modify(|_, w| w.post().bits(1));
+            self.block().ss_time.modify(|_, w| w.inact().bits(1));
+        }
+        
         // Enables the slave select pin for the master
         self.block().ctrl0.modify(|r, w| unsafe{w.bits(r.bits() | 0x01 << 16)});
         // Sets slave select as output.
@@ -171,17 +180,45 @@ impl FullDuplex<u8> for SpiPort<AF1, Spi0, 6, 4, 5, 7> {
     type Error = Void;
 
     fn read(&mut self) -> nb::Result<u8, Self::Error> {
+        // TODO figure out read logic
         Ok(self.block().data8()[0].read().bits())
     }
 
     fn send(&mut self, word: u8) -> nb::Result<(), Self::Error> {
         while self.is_busy() {}
         unsafe{
+            // HW Requires disabling/reenabling SPI block at the end of each transaction (when SS is inactive)
+            self.disable();
+            // Probably don't need to reenable the tx/rx fifos each transaction. Could leave them enabled?
+            self.block().dma.modify(|_,w| w.tx_fifo_en().en());
+            self.block().dma.modify(|_,w| w.rx_fifo_en().en());
+            // Clear FIFOs
+            self.block().dma.modify(|_,w| w.tx_fifo_clear().clear());
+            self.block().dma.modify(|_,w| w.rx_fifo_clear().clear());
+            // Set number of transmit characters
             self.block().ctrl1.modify(|_, w| w.tx_num_char().bits(1));
-            let x = 0x40046000 as *mut u32;
-            core::ptr::write_volatile(0x40046000 as *mut u32, 0xAA);
-            //self.block().data8()[0].write(|w| w.data().bits(word));
+            // Clear master done flag
+            self.block().int_fl.modify(|_,w | w.m_done().clear_bit());
+            // Enable SPI block
+            self.enable();
+        
+            // Write character
+            //core::ptr::write_volatile(0x40046000 as *mut u8, word);
+            self.block().data8()[0].write(|w| w.data().bits(word));
+
+            // Start transaction
             self.block().ctrl0.modify(|_, w| w.start().set_bit());
+
+            // Wait for tx elements to be sent
+            let mut tx_fifo_elem = self.block().dma.read().tx_fifo_cnt().bits();
+            while tx_fifo_elem != 0 {
+                tx_fifo_elem = self.block().dma.read().tx_fifo_cnt().bits();
+            }
+            let mut master_done = self.block().int_fl.read().m_done().bits();
+            // Wait for master to finish
+            while !master_done {
+                master_done = self.block().int_fl.read().m_done().bits();
+            }
         }
         Ok(())
     }
