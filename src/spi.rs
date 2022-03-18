@@ -179,9 +179,12 @@ impl SpiPort<AF1, Spi0, 6, 4, 5, 7>{
 impl FullDuplex<u8> for SpiPort<AF1, Spi0, 6, 4, 5, 7> {
     type Error = Void;
 
+    /// Must only be called after `send` as the interface will read and write at the same time.
     fn read(&mut self) -> nb::Result<u8, Self::Error> {
-        // TODO figure out read logic
-        Ok(self.block().data8()[0].read().bits())
+        match self.block().dma.read().rx_fifo_cnt().bits() {
+            0 => Err(nb::Error::WouldBlock),
+            _ => Ok(self.block().data8()[0].read().bits())
+        }
     }
 
     fn send(&mut self, word: u8) -> nb::Result<(), Self::Error> {
