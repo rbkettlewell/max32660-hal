@@ -6,9 +6,10 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-max32660-pac = {version = "0.1.0", features = ["rt"], path="../max32660-pac"}
+max32660-pac = {version = "0.1.0", features = ["rt"]}
 void = {version = "1.0.2", default-features = false}
 cortex-m = "0.7.4"
+nb = "1.0.0"
 
 [dependencies.embedded-hal]
 features = ["unproven"]
@@ -16,5 +17,7 @@ version = "0.2.6"
 
 [features]
 doc = []
+pkg-tqfn = []
+pkg-wlp = []
 rt = ["max32660-pac/rt"]
-default = ["rt"]
+default = ["rt", "pkg-tqfn"]
