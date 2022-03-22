@@ -2,6 +2,7 @@ use crate::gpio::p0::Parts;
 use crate::gpio::{AltFn, AltMode, Floating, Input, Level, Output, Pin, PushPull, AF1, AF2};
 use core::marker::PhantomData;
 use embedded_hal::spi::{FullDuplex, Mode, Phase, Polarity};
+use crate::clocks::PCLK_FREQ;
 
 use crate::pac::SPI17Y as SPI0;
 use crate::pac::spi17y;
@@ -101,6 +102,31 @@ spi_ports!([
     (new_spi_1, AF2, Spi1, 2, 0, 1, 3),
 ]);
 
+struct SclkDividers{
+    high_clk: u8,
+    low_clk: u8,
+    scale: u8
+}
+
+/// Figure out what clock scaling factors are required to achieve target sclk_frequency.
+fn get_sclk_dividers(pclk_freq: u32, sclk_freq: u32) -> SclkDividers {
+    let freq_div = pclk_freq / sclk_freq;
+    let mut high_clk  = freq_div / 2;
+    let mut low_clk = high_clk;
+    let mut scale = 0u32;
+    if freq_div % 2 == 1 {
+        high_clk +=1;
+    }
+
+    while high_clk > 16 && scale < 9 {
+        high_clk /= 2;
+        low_clk /= 2;
+        scale+=1;
+    }
+    SclkDividers{high_clk: high_clk as u8, low_clk: low_clk as u8, scale: scale as u8}
+
+}
+
 impl SpiPort<AF1, Spi0, 6, 4, 5, 7>{
     fn block(&self) -> &spi17y::RegisterBlock {
         let ptr = unsafe { &*SPI0::ptr() };
@@ -108,7 +134,7 @@ impl SpiPort<AF1, Spi0, 6, 4, 5, 7>{
     }
 
     /// Configures the SPI0 Port polarity, mode
-    pub fn configure(&mut self, mode: Mode, ss_active_pol: Level, sck_div: u8){
+    pub fn configure(&mut self, mode: Mode, ss_active_pol: Level, sck_div: u8, sclk_freq: u32){
         // Ensure SPI block is disabled before configuration
         self.disable();
         // Selects between master and slave mode. Only master mode support currently.
@@ -137,6 +163,14 @@ impl SpiPort<AF1, Spi0, 6, 4, 5, 7>{
             // Number of bits per character
             self.block().ctrl2.modify(|_, w| w.numbits().bits(8u8));
         }
+        // Sclk frequency configuration
+        let sclk_divisors = get_sclk_dividers(PCLK_FREQ, sclk_freq);
+        unsafe{
+            self.block().clk_cfg.modify(|_, w| w.hi().bits(sclk_divisors.high_clk));
+            self.block().clk_cfg.modify(|_, w| w.lo().bits(sclk_divisors.low_clk));
+            self.block().clk_cfg.modify(|_, w| w.scale().bits(sclk_divisors.scale));
+        }
+
         // Standard SCK polarity for MODE 0/1
         if mode.polarity == Polarity::IdleLow {
             self.block().ctrl2.modify(|_, w|w.cpol().normal());
