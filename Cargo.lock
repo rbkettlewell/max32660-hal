@@ -72,14 +72,15 @@ dependencies = [
  "cortex-m",
  "embedded-hal",
  "max32660-pac",
+ "nb 1.0.0",
  "void",
 ]
 
 [[package]]
 name = "max32660-pac"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a87bb5380043430eb1aeff44ebcc86deeeadd213b2b504e2713555ba4c85c5a"
+checksum = "9c30bc4767cd33b136a72b6203b907ffc48f1c956f3713acc760ae777a5a1510"
 dependencies = [
  "bare-metal 1.0.0",
  "cortex-m",
