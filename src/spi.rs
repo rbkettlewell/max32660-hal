@@ -25,7 +25,7 @@ pub struct Pins<
     sclk: Pin<AF, Output<PushPull>, SCLK_IDX>,
     miso: Pin<AF, Input<Floating>, MISO_IDX>,
     mosi: Pin<AF, Output<PushPull>, MOSI_IDX>,
-    ss: Pin<AF, Output<PushPull>, SS_IDX>,
+    ss: Option<Pin<AF, Output<PushPull>, SS_IDX>>,
 }
 
 pub struct SpiPort<
@@ -48,7 +48,7 @@ impl<AF: AltMode, PORT, const SCLK_IDX: u8, const MISO_IDX: u8, const MOSI_IDX: 
         sclk: Pin<SA, SM, SCLK_IDX>,
         miso: Pin<IA, IM, MISO_IDX>,
         mosi: Pin<OA, OM, MOSI_IDX>,
-        ss: Pin<XA, XM, SS_IDX>,
+        ss: Option<Pin<XA, XM, SS_IDX>>,
     ) -> Pins<AF, SCLK_IDX, MISO_IDX, MOSI_IDX, SS_IDX>
     where
         Pin<AF, SM, SCLK_IDX>: AltFn,
@@ -59,11 +59,22 @@ impl<AF: AltMode, PORT, const SCLK_IDX: u8, const MISO_IDX: u8, const MOSI_IDX: 
         let sclk_mode = sclk.into_mode::<AF>();
         let miso_mode = miso.into_mode::<AF>();
         let mosi_mode = mosi.into_mode::<AF>();
-        let ss_mode = ss.into_mode::<AF>();
+
+        let mut ss_electrical: Option<Pin<AF,Output<PushPull>, SS_IDX>>;
+        match ss {
+            Some(ss_pin) => {
+                let ss_mode = ss_pin.into_mode::<AF>();
+                ss_electrical = Some(ss_mode.into_push_pull_output(Level::High));
+            }
+            None => {
+                ss_electrical = None;
+            }
+        }
+        
         let sclk_electrical = sclk_mode.into_push_pull_output(Level::High);
         let miso_electrical = miso_mode.into_floating_input();
         let mosi_electrical = mosi_mode.into_push_pull_output(Level::High);
-        let ss_electrical = ss_mode.into_push_pull_output(Level::High);
+        
         Pins {
             sclk: sclk_electrical,
             miso: miso_electrical,
@@ -83,7 +94,7 @@ macro_rules! spi_ports{
                     sclk: Pin::<SA, SM, $a>,
                     miso: Pin::<IA, IM, $b>,
                     mosi: Pin::<OA, OM, $c>,
-                    ss: Pin::<XA, XM, $d>
+                    ss: Option<Pin::<XA, XM, $d>>
                 ) -> Self {
                     let pins = Self::configure_pins(sclk, miso, mosi, ss);
                     Self{
@@ -134,7 +145,7 @@ impl SpiPort<AF1, Spi0, 6, 4, 5, 7>{
     }
 
     /// Configures the SPI0 Port polarity, mode
-    pub fn configure(&mut self, mode: Mode, ss_active_pol: Level, sck_div: u8, sclk_freq: u32){
+    pub fn configure(&mut self, mode: Mode, ss_active_pol: Level, sclk_freq: u32){
         // Ensure SPI block is disabled before configuration
         self.disable();
         // Selects between master and slave mode. Only master mode support currently.
@@ -186,10 +197,6 @@ impl SpiPort<AF1, Spi0, 6, 4, 5, 7>{
         // SCK polarity for MODE 1/3
         else{
             self.block().ctrl2.modify(|_, w|w.cpha().rising_edge());
-        }
-        // Set SPI0 Peripheral Clock Scale
-        unsafe{
-            self.block().clk_cfg.modify(|_, w| w.scale().bits(sck_div))
         }
     }
 
