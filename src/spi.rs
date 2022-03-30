@@ -1,8 +1,10 @@
 use crate::clocks::PCLK_FREQ;
 use crate::gpio::p0::Parts;
-use crate::gpio::{AltFn, AltMode, Floating, Gpio, Input, Level, Output, Pin, PushPull, AF1, AF2};
+use crate::gpio::{AltFn, AltMode, Floating, Gpio, Input, Level, Output, Pin, PushPull, AF1, AF2, DriveStrength};
 use core::marker::PhantomData;
+use cortex_m::asm::nop;
 use cortex_m::prelude::_embedded_hal_watchdog_WatchdogDisable;
+use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::spi::{FullDuplex, Mode, Phase, Polarity};
 
 use crate::pac::spi17y;
@@ -15,10 +17,14 @@ use nb;
 use void::Void;
 
 /// SPI0 Pins
-const SPI0_SCK: u8 = 6;
-const SPI0_MISO: u8 = 4;
-const SPI0_MOSI: u8 = 5;
-const SPI0_SS0: u8 = 7;
+pub const SPI0_SCK: u8 = 6;
+pub const SPI0_MISO: u8 = 4;
+pub const SPI0_MOSI: u8 = 5;
+pub const SPI0_SS0: u8 = 7;
+
+// FIFO and DMA constants
+/// Assumes write word size is a u8 and only half the fifo is being used.
+const TX_FIFO_LEVEL: u8 = 16;
 
 pub struct Spi0;
 
@@ -76,9 +82,11 @@ impl<
         let mosi_mode = mosi.into_mode::<AF>();
         let ss_mode = ss.into_mode::<AF>();
 
-        let sclk_electrical = sclk_mode.into_push_pull_output(Level::High);
+        let mut sclk_electrical = sclk_mode.into_push_pull_output(Level::High);
+        sclk_electrical.set_drive_strength(DriveStrength::SixMilliamps);
         let miso_electrical = miso_mode.into_floating_input();
-        let mosi_electrical = mosi_mode.into_push_pull_output(Level::High);
+        let mut mosi_electrical = mosi_mode.into_push_pull_output(Level::High);
+        mosi_electrical.set_drive_strength(DriveStrength::SixMilliamps);
         let ss_electrical = Some(ss_mode.into_push_pull_output(Level::High));
 
         Pins {
@@ -118,6 +126,10 @@ spi_ports!([
     (new_spi_0, AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0),
     (new_spi_1_af2, AF2, Spi1, 2, 0, 1, 3),
 ]);
+
+pub trait BurstWrite{
+    fn write_chunk(&mut self, data: &[u8]);
+}
 
 struct SclkDividers {
     high_clk: u8,
@@ -214,20 +226,57 @@ impl SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0> {
         else {
             self.block().ctrl2.modify(|_, w| w.cpha().rising_edge());
         }
+        // Set the FIFO level to ensure not to overflow when writing
+        self.block().dma.modify(|_, w| unsafe{w.tx_fifo_level().bits(TX_FIFO_LEVEL)});
+
+        // Does this need to be written each time a new byte is added to the fifo
+        self.block().ctrl1.modify(|_, w| unsafe{w.tx_num_char().bits(1)});
+
+        // Inactive SS stretch
+        self.block().ss_time.modify(|_, w| unsafe {w.inact().bits(1)});
+        self.block().ss_time.modify(|_, w| unsafe {w.post().bits(1)});
+        self.block().ss_time.modify(|_, w| unsafe {w.pre().bits(1)});
+
+        // Clear master done flag
+        self.block().int_fl.modify(|_, w| w.m_done().clear_bit());
+
+        // Clear fifos. TODO determine if this works when the SPI controller is not activated.
+        self.clear_fifos();
+
+        // Enable SPI controller
+        self.enable();
+    }
+
+    /// Clear SPI Fifos
+    pub fn clear_fifos(&mut self){
+        // Clear FIFOs
+        self.block().dma.modify(|_, w| w.tx_fifo_clear().clear());
+        self.block().dma.modify(|_, w| w.rx_fifo_clear().clear());
     }
 
     /// Enables the SPI0 Port
     pub fn enable(&mut self) {
+        // Enable FIFOs
+        self.block().dma.modify(|_, w| w.tx_fifo_en().en());
+        self.block().dma.modify(|_, w| w.rx_fifo_en().en());
         // Sets slave select as output.
         self.block().ctrl0.modify(|_, w| w.en().en());
     }
 
     /// Disables the SPI0 Port
     pub fn disable(&mut self) {
+        // Stop transaction
+        self.block().ctrl0.modify(|_, w| w.start().clear_bit());
+         // Disable FIFOs
+         self.block().dma.modify(|_, w| w.tx_fifo_en().dis());
+         self.block().dma.modify(|_, w| w.rx_fifo_en().dis());
+        // Clear master done flag
+        self.block().int_fl.modify(|_, w| w.m_done().clear_bit());
         // Sets slave select as output.
         self.block().ctrl0.modify(|_, w| w.en().dis());
     }
-
+    
+    /// Checks if transmit is still active.
     pub fn is_busy(&self) -> bool {
         self.block().stat.read().busy().is_active()
     }
@@ -235,17 +284,47 @@ impl SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0> {
     /// Allows manual control of SS line for non-standard protocols
     pub fn take_ss(&mut self) -> Pin<Gpio, Output<PushPull>, SPI0_SS0> {
         // Disables slave select as output.
-        self.block().ctrl0.modify(|_, w| w.en().dis());
+        unsafe {
+            self.block().ctrl0.modify(|r, w| w.bits(r.bits() & !(0x01 << 16)));
+        }
         let ss = mem::replace(&mut self.pins.ss, None).unwrap();
         ss.into_mode::<Gpio>()
     }
 
+    /// Returns SS line to the SPI Pins struct
     pub fn put_ss<AF: AltMode, XM>(&mut self, ss: Pin<AF, XM, SPI0_SS0>) {
         let ss_af = ss.into_mode::<AF1>();
         let ss_elect = ss_af.into_push_pull_output(Level::High);
         self.pins.ss = Some(ss_elect);
         // Sets slave select as output.
-        self.block().ctrl0.modify(|_, w| w.en().en());
+        self.block()
+            .ctrl0
+            .modify(|r, w| unsafe { w.bits(r.bits() | 0x01 << 16) });
+    }
+}
+
+impl BurstWrite for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>{
+    fn write_chunk(&mut self, data: &[u8]){
+        // Wait for Idle SPI controller
+        while self.is_busy() {}
+        self.clear_fifos();
+        let burst_len = data.len() as usize;
+        self.block().ctrl1.modify(|_, w| unsafe{w.tx_num_char().bits(burst_len as u16)});
+        
+        
+        unsafe{
+            // Pipelining the SPI write
+            core::ptr::write_volatile(0x40046000 as *mut u8, data[0]);
+            // Start transaction
+            self.block().ctrl0.modify(|_, w| w.start().set_bit());
+            let mut i = 1;
+            while i < burst_len {
+                core::ptr::write_volatile(0x40046000 as *mut u8, data[i]);
+                i += 1;
+            }
+        }
+        
+        
     }
 }
 
@@ -260,28 +339,13 @@ impl FullDuplex<u8> for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_
         }
     }
 
+    /// Send will block if tx fifo level is reached and will wait for a slot to open
     fn send(&mut self, word: u8) -> nb::Result<(), Self::Error> {
-        while self.is_busy() {}
         unsafe {
-            // HW Requires disabling/reenabling SPI block at the end of each transaction (when SS is inactive)
-            self.disable();
-            // Probably don't need to reenable the tx/rx fifos each transaction. Could leave them enabled?
-            self.block().dma.modify(|_, w| w.tx_fifo_en().en());
-            self.block().dma.modify(|_, w| w.rx_fifo_en().en());
-            // Clear FIFOs
-            self.block().dma.modify(|_, w| w.tx_fifo_clear().clear());
-            self.block().dma.modify(|_, w| w.rx_fifo_clear().clear());
-            // Set number of transmit characters
-            self.block().ctrl1.modify(|_, w| w.tx_num_char().bits(1));
-            // Clear master done flag
-            self.block().int_fl.modify(|_, w| w.m_done().clear_bit());
-            // Enable SPI block
-            self.enable();
-
-            // Write character
-            //core::ptr::write_volatile(0x40046000 as *mut u8, word);
+            // Write byte to hw based tx fifo
             self.block().data8()[0].write(|w| w.data().bits(word));
-
+            // Send method sends one byte at a time
+            self.block().ctrl1.modify(|_, w| unsafe{w.tx_num_char().bits(1)});
             // Start transaction
             self.block().ctrl0.modify(|_, w| w.start().set_bit());
 
