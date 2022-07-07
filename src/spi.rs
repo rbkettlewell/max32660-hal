@@ -224,7 +224,7 @@ impl SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0> {
         }
         // SCK polarity for MODE 1/3
         else {
-            self.block().ctrl2.modify(|_, w| w.cpha().rising_edge());
+            self.block().ctrl2.modify(|_, w| w.cpha().falling_edge());
         }
         // Set the FIFO level to ensure not to overflow when writing
         self.block().dma.modify(|_, w| unsafe{w.tx_fifo_level().bits(TX_FIFO_LEVEL)});
@@ -252,6 +252,11 @@ impl SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0> {
         // Clear FIFOs
         self.block().dma.modify(|_, w| w.tx_fifo_clear().clear());
         self.block().dma.modify(|_, w| w.rx_fifo_clear().clear());
+    }
+
+    /// Check the RX Fifo count
+    pub fn rx_fifo_count(&mut self) -> u8{
+        self.block().dma.read().rx_fifo_cnt().bits()
     }
 
     /// Enables the SPI0 Port
@@ -323,8 +328,7 @@ impl BurstWrite for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>
                 i += 1;
             }
         }
-        
-        
+        //self.block().int_fl.write(|w| w.m_done().clear_bit());
     }
 }
 
@@ -335,7 +339,7 @@ impl FullDuplex<u8> for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_
     fn read(&mut self) -> nb::Result<u8, Self::Error> {
         match self.block().dma.read().rx_fifo_cnt().bits() {
             0 => Err(nb::Error::WouldBlock),
-            _ => Ok(self.block().data8()[0].read().bits()),
+            _ => Ok(self.block().data8()[0].read().data().bits())
         }
     }
 
