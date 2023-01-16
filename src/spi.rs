@@ -159,7 +159,9 @@ fn get_sclk_dividers(pclk_freq: u32, sclk_freq: u32) -> SclkDividers {
     }
 }
 
-impl SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0> {
+pub type SpiPort0 = SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>;
+
+impl SpiPort0 {
     fn block(&self) -> &spi17y::RegisterBlock {
         let ptr = unsafe { &*SPI0::ptr() };
         ptr
@@ -308,7 +310,7 @@ impl SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0> {
     }
 }
 
-impl BurstWrite for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>{
+impl BurstWrite for SpiPort0{
     fn write_chunk(&mut self, data: &[u8]){
         // Wait for Idle SPI controller
         while self.is_busy() {}
@@ -332,7 +334,7 @@ impl BurstWrite for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>
     }
 }
 
-impl FullDuplex<u8> for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0> {
+impl FullDuplex<u8> for SpiPort0 {
     type Error = Void;
 
     /// Must only be called after `send` as the interface will read and write at the same time.
@@ -368,11 +370,15 @@ impl FullDuplex<u8> for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_
     }
 }
 
-impl embedded_hal::blocking::spi::write::Default<u8>
-    for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>
-{
-}
-impl embedded_hal::blocking::spi::transfer::Default<u8>
-    for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>
-{
-}
+
+impl embedded_hal::blocking::spi::write::Default<u8> for SpiPort0 {}
+impl embedded_hal::blocking::spi::transfer::Default<u8> for SpiPort0 {}
+
+// impl embedded_hal::blocking::spi::write::Default<u8>
+//     for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>
+// {
+// }
+// impl embedded_hal::blocking::spi::transfer::Default<u8>
+//     for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>
+// {
+// }
