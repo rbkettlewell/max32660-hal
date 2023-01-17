@@ -373,12 +373,3 @@ impl FullDuplex<u8> for SpiPort0 {
 
 impl embedded_hal::blocking::spi::write::Default<u8> for SpiPort0 {}
 impl embedded_hal::blocking::spi::transfer::Default<u8> for SpiPort0 {}
-
-// impl embedded_hal::blocking::spi::write::Default<u8>
-//     for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>
-// {
-// }
-// impl embedded_hal::blocking::spi::transfer::Default<u8>
-//     for SpiPort<AF1, Spi0, SPI0_SCK, SPI0_MISO, SPI0_MOSI, SPI0_SS0>
-// {
-// }
