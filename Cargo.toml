@@ -1,12 +1,17 @@
 [package]
 name = "max32660-hal"
+authors = ["Blayne Kettlewell <rbkettlewell@gmail.com"]
+categories = ["embedded", "hardware-support", "no-std"]
+description = "Hardware Abstraction Layer (HAL) for the MAX 32660 microcontroller"
+keywords = ["arm", "cortex-m", "max32660", "embedded-hal"]
+license = "0BSD"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-max32660-pac = {version = "0.1.0", features = ["rt"]}
+max32660-pac = {version = "0.1.*", features = ["rt"]}
 void = {version = "1.0.2", default-features = false}
 cortex-m = "0.7.4"
 nb = "1.0.0"

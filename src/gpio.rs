@@ -102,6 +102,11 @@ pub enum Level {
     High,
 }
 
+pub enum TriggerMode {
+    Level,
+    Edge
+}
+
 pub enum DriveStrength {
     OneMilliamps,
     TwoMilliamps,
@@ -232,6 +237,34 @@ impl<AF: AltMode, IO, const IDX: u8> Pin<AF, IO, IDX> {
             Level::High => pin.set_high().unwrap(),
         }
         pin
+    }
+}
+
+impl<MODE, const IDX: u8> Pin<Gpio, Input<MODE>, IDX> {
+    pub fn enable_interrupt(&self, trigger_mode: TriggerMode, trigger_state: Level){
+        match trigger_mode {
+            TriggerMode::Edge => self.block().int_mod.modify(
+                |r,w| unsafe{w.bits(r.bits() | 0x01 << self.pin())}),
+            TriggerMode::Level => self.block().int_mod.modify(
+                |r,w| unsafe{w.bits(r.bits() & !self.mask())})
+        }
+        match trigger_state {
+            Level::Low => self.block().int_pol.modify(
+                |r,w| unsafe{w.bits(r.bits() & !self.mask())}),
+            Level::High => self.block().int_pol.modify(
+                |r,w| unsafe{w.bits(r.bits() | 0x01 << self.pin())})
+        }
+        self.block().int_en_set.write(unsafe{|w| w.bits(0x01 << self.pin())});
+        
+    }
+    pub fn disable_interrupt(&self){
+        self.block().int_en_clr.write(unsafe{|w| w.bits(0x01 << self.pin())});
+    }
+    pub fn pending_interrupt(&self) -> bool{
+        self.block().int_stat.read().bits() & self.mask() != 0 
+    }
+    pub fn clear_interrupt(&self){
+        self.block().int_clr.write(|w|unsafe{ w.bits(0x01 << self.pin())});
     }
 }
 

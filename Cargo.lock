@@ -78,9 +78,9 @@ dependencies = [
 
 [[package]]
 name = "max32660-pac"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c30bc4767cd33b136a72b6203b907ffc48f1c956f3713acc760ae777a5a1510"
+checksum = "3ef47a5e7f22bd1325f653379c4c7240fd602b8a82ddbabb85b9a2319f30aba3"
 dependencies = [
  "bare-metal 1.0.0",
  "cortex-m",
