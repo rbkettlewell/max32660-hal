@@ -5,6 +5,7 @@ categories = ["embedded", "hardware-support", "no-std"]
 description = "Hardware Abstraction Layer (HAL) for the MAX 32660 microcontroller"
 keywords = ["arm", "cortex-m", "max32660", "embedded-hal"]
 license = "0BSD"
+repository = "https://github.com/rbkettlewell/max32660-hal"
 version = "0.1.0"
 edition = "2021"
 
