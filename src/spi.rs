@@ -1,16 +1,16 @@
+//! SPI implementation of the embedded_hal spi traits and configuration
+//!
 use crate::clocks::PCLK_FREQ;
-use crate::gpio::p0::Parts;
 use crate::gpio::{AltFn, AltMode, Floating, Gpio, Input, Level, Output, Pin, PushPull, AF1, AF2, DriveStrength};
 use core::marker::PhantomData;
 use cortex_m::asm::nop;
-use cortex_m::prelude::_embedded_hal_watchdog_WatchdogDisable;
 use embedded_hal::digital::v2::OutputPin;
 use embedded_hal::spi::{FullDuplex, Mode, Phase, Polarity};
 
 use crate::pac::spi17y;
-use crate::pac::spimss;
+//use crate::pac::spimss;
 use crate::pac::SPI17Y as SPI0;
-use crate::pac::SPIMSS as SPI1;
+//use crate::pac::SPIMSS as SPI1;
 
 use core::mem;
 use nb;

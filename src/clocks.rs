@@ -1,3 +1,5 @@
+//! Control system oscillators and clock sources
+//!
 use crate::pac::gcr::CLKCN;
 
 /// High Frequency Clock Frequency (in Hz).
@@ -12,9 +14,11 @@ trait Oscillator {
 }
 
 
+/// 32.768KHz External Crystal or Clock X32K
 struct X32k;
-/// Nano Ring oscillator cannot be disabled.
+/// 80KHz Nano-Ring oscillator which cannot be disabled.
 struct NanoRing;
+/// High-Frequency Internal Oscillator
 struct Hfio;
 
 impl Oscillator for X32k {
