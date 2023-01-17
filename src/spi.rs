@@ -351,7 +351,7 @@ impl FullDuplex<u8> for SpiPort0 {
             // Write byte to hw based tx fifo
             self.block().data8()[0].write(|w| w.data().bits(word));
             // Send method sends one byte at a time
-            self.block().ctrl1.modify(|_, w| unsafe{w.tx_num_char().bits(1)});
+            self.block().ctrl1.modify(|_, w| w.tx_num_char().bits(1));
             // Start transaction
             self.block().ctrl0.modify(|_, w| w.start().set_bit());
 
