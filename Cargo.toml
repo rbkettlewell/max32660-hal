@@ -6,7 +6,7 @@ description = "Hardware Abstraction Layer (HAL) for the MAX 32660 microcontrolle
 keywords = ["arm", "cortex-m", "max32660", "embedded-hal"]
 license = "0BSD"
 repository = "https://github.com/rbkettlewell/max32660-hal"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -16,6 +16,7 @@ max32660-pac = {version = "0.1.*", features = ["rt"]}
 void = {version = "1.0.2", default-features = false}
 cortex-m = "0.7.4"
 nb = "1.0.0"
+heapless = "*"
 
 [dependencies.embedded-hal]
 features = ["unproven"]

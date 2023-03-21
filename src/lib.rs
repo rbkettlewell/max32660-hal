@@ -5,3 +5,4 @@ pub mod clocks;
 pub mod delay;
 pub mod gpio;
 pub mod spi;
+pub mod i2c;
